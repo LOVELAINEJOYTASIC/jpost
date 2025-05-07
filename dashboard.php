@@ -1,22 +1,22 @@
 <?php
-// Create database if it doesn't exist
+
 $host = 'localhost';
 $user = 'root';
 $pass = '';
 $db = 'jpost';
-// Connect to MySQL server only (no db yet)
+
 $conn = new mysqli($host, $user, $pass);
 if ($conn->connect_error) {
     die('Database connection failed: ' . $conn->connect_error);
 }
 $conn->query("CREATE DATABASE IF NOT EXISTS `$db`");
 $conn->close();
-// Now connect to the actual database
+
 $conn = new mysqli($host, $user, $pass, $db);
 if ($conn->connect_error) {
     die('Database connection failed: ' . $conn->connect_error);
 }
-// Create jobs table if not exists
+
 $conn->query("CREATE TABLE IF NOT EXISTS jobs (
     id INT AUTO_INCREMENT PRIMARY KEY,
     company VARCHAR(255) NOT NULL,
@@ -25,7 +25,7 @@ $conn->query("CREATE TABLE IF NOT EXISTS jobs (
     salary VARCHAR(100) NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 )");
-// Create users table if not exists
+
 $conn->query("CREATE TABLE IF NOT EXISTS users (
     id INT AUTO_INCREMENT PRIMARY KEY,
     username VARCHAR(100) NOT NULL UNIQUE,
@@ -33,7 +33,7 @@ $conn->query("CREATE TABLE IF NOT EXISTS users (
     user_type ENUM('jobseeker','employer') NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 )");
-// Handle delete
+
 if (isset($_GET['delete'])) {
     $id = intval($_GET['delete']);
     $conn->query("DELETE FROM jobs WHERE id=$id");
@@ -51,7 +51,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_id'])) {
     header('Location: dashboard.php');
     exit();
 }
-// Handle new job post
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['edit_id']) && isset($_POST['company'], $_POST['job'], $_POST['requirements'], $_POST['salary'])) {
     $company = $conn->real_escape_string($_POST['company']);
     $job = $conn->real_escape_string($_POST['job']);
@@ -61,7 +61,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['edit_id']) && isset(
     header('Location: dashboard.php');
     exit();
 }
-// Fetch all jobs
+
 $jobs = $conn->query("SELECT * FROM jobs ORDER BY created_at DESC");
 ?>
 <!DOCTYPE html>
@@ -251,7 +251,7 @@ $jobs = $conn->query("SELECT * FROM jobs ORDER BY created_at DESC");
                 max-width: 98vw;
             }
         }
-        /* Modal styles */
+       
         .modal {
             display: none;
             position: fixed;
@@ -359,7 +359,7 @@ $jobs = $conn->query("SELECT * FROM jobs ORDER BY created_at DESC");
             <button class="recruit">Recruit</button>
         </div>
     </div>
-    <!-- Posted Jobs List -->
+
     <div style="width:95%;max-width:1000px;margin:32px auto 0 auto;">
         <h2 style="color:#4fc3f7;text-align:left;margin-bottom:12px;">Posted Jobs</h2>
         <?php if ($jobs && $jobs->num_rows > 0): ?>
@@ -429,7 +429,7 @@ $jobs = $conn->query("SELECT * FROM jobs ORDER BY created_at DESC");
             modal.style.display = 'none';
         }
     };
-    // Open edit modal with pre-filled data
+    
     function openEditModal(id, company, job, requirements, salary) {
         document.getElementById('postModal').style.display = 'block';
         document.getElementById('modalTitle').innerText = 'Edit Job Post';
