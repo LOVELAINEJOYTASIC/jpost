@@ -1,25 +1,29 @@
 <?php
+<<<<<<< HEAD
 ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
 // Create database if it doesn't exist
+=======
+
+>>>>>>> 376c003af479d721c1dc08bed472e3e7d386750b
 $host = 'localhost';
 $user = 'root';
 $pass = '';
 $db = 'jpost';
-// Connect to MySQL server only (no db yet)
+
 $conn = new mysqli($host, $user, $pass);
 if ($conn->connect_error) {
     die('Database connection failed: ' . $conn->connect_error);
 }
 $conn->query("CREATE DATABASE IF NOT EXISTS `$db`");
 $conn->close();
-// Now connect to the actual database
+
 $conn = new mysqli($host, $user, $pass, $db);
 if ($conn->connect_error) {
     die('Database connection failed: ' . $conn->connect_error);
 }
-// Create jobs table if not exists
+
 $conn->query("CREATE TABLE IF NOT EXISTS jobs (
     id INT AUTO_INCREMENT PRIMARY KEY,
     company VARCHAR(255) NOT NULL,
@@ -28,7 +32,7 @@ $conn->query("CREATE TABLE IF NOT EXISTS jobs (
     salary VARCHAR(100) NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 )");
-// Create users table if not exists
+
 $conn->query("CREATE TABLE IF NOT EXISTS users (
     id INT AUTO_INCREMENT PRIMARY KEY,
     username VARCHAR(100) NOT NULL UNIQUE,
@@ -36,6 +40,7 @@ $conn->query("CREATE TABLE IF NOT EXISTS users (
     user_type ENUM('jobseeker','employer') NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 )");
+<<<<<<< HEAD
 // Create applications table if not exists
 $conn->query("CREATE TABLE IF NOT EXISTS job_applications (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -47,6 +52,9 @@ $conn->query("CREATE TABLE IF NOT EXISTS job_applications (
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 )");
 // Handle delete
+=======
+
+>>>>>>> 376c003af479d721c1dc08bed472e3e7d386750b
 if (isset($_GET['delete'])) {
     $id = intval($_GET['delete']);
     $conn->query("DELETE FROM jobs WHERE id=$id");
@@ -64,6 +72,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_id']) && $_POST[
     header('Location: dashboard.php');
     exit();
 }
+<<<<<<< HEAD
 // Handle new job post
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && (!isset($_POST['edit_id']) || $_POST['edit_id'] === '')) {
     if (isset($_POST['company'], $_POST['job'], $_POST['requirements'], $_POST['salary'])) {
@@ -92,8 +101,19 @@ if (isset($_POST['update_status'])) {
         exit();
     }
     $stmt->close();
+=======
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['edit_id']) && isset($_POST['company'], $_POST['job'], $_POST['requirements'], $_POST['salary'])) {
+    $company = $conn->real_escape_string($_POST['company']);
+    $job = $conn->real_escape_string($_POST['job']);
+    $requirements = $conn->real_escape_string($_POST['requirements']);
+    $salary = $conn->real_escape_string($_POST['salary']);
+    $conn->query("INSERT INTO jobs (company, job, requirements, salary) VALUES ('$company', '$job', '$requirements', '$salary')");
+    header('Location: dashboard.php');
+    exit();
+>>>>>>> 376c003af479d721c1dc08bed472e3e7d386750b
 }
-// Fetch all jobs
+
 $jobs = $conn->query("SELECT * FROM jobs ORDER BY created_at DESC");
 // Fetch all applications for the employer's jobs
 $applications_sql = "SELECT ja.*, j.job, j.company, u.username, up.full_name, up.contact 
@@ -302,7 +322,7 @@ echo '<div style="color:yellow;background:#222;padding:8px;">Jobs found: ' . ($j
                 max-width: 98vw;
             }
         }
-        /* Modal styles */
+       
         .modal {
             display: none;
             position: fixed;
@@ -408,6 +428,7 @@ echo '<div style="color:yellow;background:#222;padding:8px;">Jobs found: ' . ($j
             <button class="recruit">Recruit</button>
         </div>
     </div>
+<<<<<<< HEAD
     <!-- Applications List -->
     <div id="applicationsList" style="width:95%;max-width:1000px;margin:32px auto 0 auto;display:none;">
         <h2 style="color:#4fc3f7;text-align:left;margin-bottom:12px;">Job Applications</h2>
@@ -446,6 +467,9 @@ echo '<div style="color:yellow;background:#222;padding:8px;">Jobs found: ' . ($j
         <?php endif; ?>
     </div>
     <!-- Posted Jobs List -->
+=======
+
+>>>>>>> 376c003af479d721c1dc08bed472e3e7d386750b
     <div style="width:95%;max-width:1000px;margin:32px auto 0 auto;">
         <h2 style="color:#4fc3f7;text-align:left;margin-bottom:12px;">Your Posted Jobs</h2>
         <?php if ($jobs && $jobs->num_rows > 0): ?>
@@ -520,7 +544,7 @@ echo '<div style="color:yellow;background:#222;padding:8px;">Jobs found: ' . ($j
             modal.style.display = 'none';
         }
     };
-    // Open edit modal with pre-filled data
+    
     function openEditModal(id, company, job, requirements, salary) {
         document.getElementById('postModal').style.display = 'block';
         document.getElementById('modalTitle').innerText = 'Edit Job Post';
