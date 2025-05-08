@@ -1,4 +1,7 @@
 <?php
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+error_reporting(E_ALL);
 session_start();
 // Create database if it doesn't exist
 $host = 'localhost';
@@ -22,7 +25,7 @@ $conn->query("CREATE TABLE IF NOT EXISTS users (
     id INT AUTO_INCREMENT PRIMARY KEY,
     username VARCHAR(100) NOT NULL UNIQUE,
     password VARCHAR(255) NOT NULL,
-    user_type ENUM('jobseeker','employer') NOT NULL,
+    user_type ENUM('jobseeker','employer','admin') NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 )");
 $error = '';
@@ -35,7 +38,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = 'Passwords do not match!';
     } elseif (strlen($username) < 3) {
         $error = 'Username must be at least 3 characters.';
-    } elseif (!in_array($user_type, ['jobseeker','employer'])) {
+    } elseif (!in_array($user_type, ['jobseeker', 'employer', 'admin'])) {
         $error = 'Invalid user type.';
     } else {
         // Check for duplicate username
@@ -51,9 +54,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt = $conn->prepare('INSERT INTO users (username, password, user_type) VALUES (?, ?, ?)');
             $stmt->bind_param('sss', $username, $hash, $user_type);
             if ($stmt->execute()) {
+                $_SESSION['user_id'] = $stmt->insert_id;
                 $_SESSION['username'] = $username;
                 $_SESSION['user_type'] = $user_type;
-                header('Location: dashboard.php');
+                
+                // Redirect based on user type
+                switch ($user_type) {
+                    case 'admin':
+                        header('Location: admin.php');
+                        break;
+                    case 'employer':
+                        header('Location: dashboard.php');
+                        break;
+                    case 'jobseeker':
+                        header('Location: explore.php');
+                        break;
+                    default:
+                        header('Location: explore.php');
+                }
                 exit();
             } else {
                 $error = 'Registration failed. Please try again.';

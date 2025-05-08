@@ -1,3 +1,69 @@
+<?php
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+error_reporting(E_ALL);
+session_start();
+// Database connection
+$host = 'localhost';
+$user = 'root';
+$pass = '';
+$db = 'jpost';
+
+$conn = new mysqli($host, $user, $pass, $db);
+if ($conn->connect_error) {
+    die('Database connection failed: ' . $conn->connect_error);
+}
+
+// Create applications table if not exists
+$conn->query("CREATE TABLE IF NOT EXISTS job_applications (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    job_id INT NOT NULL,
+    user_id INT NOT NULL,
+    status ENUM('Pending', 'Accepted', 'Rejected') DEFAULT 'Pending',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+)");
+
+// Handle job application
+if (isset($_POST['apply_job']) && isset($_SESSION['user_id'])) {
+    $job_id = (int)$_POST['job_id'];
+    $user_id = $_SESSION['user_id'];
+    
+    // Check if already applied
+    $check_sql = "SELECT id FROM job_applications WHERE job_id = ? AND user_id = ?";
+    $check_stmt = $conn->prepare($check_sql);
+    $check_stmt->bind_param("ii", $job_id, $user_id);
+    $check_stmt->execute();
+    $result = $check_stmt->get_result();
+    
+    if ($result->num_rows === 0) {
+        $sql = "INSERT INTO job_applications (job_id, user_id, status) VALUES (?, ?, 'Pending')";
+        $stmt = $conn->prepare($sql);
+        $stmt->bind_param("ii", $job_id, $user_id);
+        
+        if ($stmt->execute()) {
+            $success_message = "Application submitted successfully! You can view your application status in your account.";
+        } else {
+            $error_message = "Error submitting application: " . $stmt->error;
+        }
+        $stmt->close();
+    } else {
+        $error_message = "You have already applied for this job.";
+    }
+    $check_stmt->close();
+}
+
+// Fetch all jobs
+$jobs = $conn->query("SELECT * FROM jobs ORDER BY created_at DESC");
+echo '<div style="color:yellow;background:#222;padding:8px;">Jobs found: ' . ($jobs ? $jobs->num_rows : 0) . '</div>';
+
+// Redirect only if employer
+if (isset($_SESSION['user_id']) && $_SESSION['user_type'] === 'employer') {
+    header('Location: dashboard.php');
+    exit();
+}
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -217,6 +283,79 @@
                 max-width: 98vw;
             }
         }
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.8);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+        .modal-content {
+            background: #232a34;
+            padding: 24px;
+            border-radius: 12px;
+            width: 90%;
+            max-width: 400px;
+            text-align: center;
+            border: 2px solid #4fc3f7;
+        }
+        .modal-buttons {
+            display: flex;
+            justify-content: center;
+            gap: 12px;
+            margin-top: 20px;
+        }
+        .modal-button {
+            padding: 8px 24px;
+            border-radius: 6px;
+            border: none;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s ease;
+        }
+        .confirm-button {
+            background: #4fc3f7;
+            color: #222;
+        }
+        .cancel-button {
+            background: #666;
+            color: #fff;
+        }
+        .modal-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        }
+        .message {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 12px 24px;
+            border-radius: 8px;
+            color: #fff;
+            z-index: 1001;
+            animation: slideIn 0.5s ease-out;
+        }
+        .success-message {
+            background: rgba(76, 175, 80, 0.9);
+        }
+        .error-message {
+            background: rgba(244, 67, 54, 0.9);
+        }
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
     </style>
 </head>
 <body>
@@ -230,11 +369,8 @@
             <a href="account.php">Account</a>
         </nav>
         <div style="display:flex; align-items:center;">
-            <div class="search">
-                <input type="text" placeholder="Find your dream job at JPost">
-                <button>&#128269;</button>
-            </div>
-            <span class="settings">&#9881;</span>
+            <a href="login.php" style="color:#fff; text-decoration:none; margin-right:18px;">Login</a>
+            <a href="signup.php" style="background:#4fc3f7; color:#222; padding:8px 16px; border-radius:16px; text-decoration:none; font-weight:bold;">Sign Up</a>
         </div>
     </div>
     <div class="explore-container">
@@ -250,15 +386,36 @@
                     <span class="search-icon">&#128269;</span>
                 </div>
                 <div class="explore-bubbles">
-                    <span class="bubble bubble1">@Damilag</span>
-                    <span class="bubble bubble2">Web Developer</span>
-                    <span class="bubble bubble3">@Tankulan</span>
-                    <span class="bubble bubble4">CareTaker</span>
-                    <span class="bubble bubble5">@Manolo Fortich</span>
-                    <span class="bubble bubble6">@Alae</span>
-                    <span class="bubble bubble7">Waitress/Waiter</span>
-                    <span class="bubble bubble9">Driver</span>
-                    <span class="bubble bubble10">Farming</span>
+                    <div class="bubble bubble1">All Jobs</div>
+                    <div class="bubble bubble2">Full Time</div>
+                    <div class="bubble bubble3">Part Time</div>
+                    <div class="bubble bubble4">Remote</div>
+                    <div class="bubble bubble5">Internship</div>
+                </div>
+                
+                <!-- Jobs List -->
+                <div style="width:100%;display:flex;flex-wrap:wrap;gap:18px;padding:0 18px;">
+                    <?php if ($jobs && $jobs->num_rows > 0): ?>
+                        <?php while($row = $jobs->fetch_assoc()): ?>
+                            <div style="background:#fff;color:#222;border-radius:8px;box-shadow:0 2px 8px #0002;padding:18px 22px;min-width:220px;max-width:320px;flex:1;position:relative;">
+                                <div style="font-size:1.2em;font-weight:bold;margin-bottom:8px;color:#4fc3f7;">
+                                    <?php echo htmlspecialchars($row['job']); ?>
+                                </div>
+                                <div><b>Company:</b> <?php echo htmlspecialchars($row['company']); ?></div>
+                                <div><b>Requirements:</b> <?php echo nl2br(htmlspecialchars($row['requirements'])); ?></div>
+                                <div><b>Salary:</b> <?php echo htmlspecialchars($row['salary']); ?></div>
+                                <div style="font-size:0.9em;color:#888;margin-top:8px;">Posted: <?php echo htmlspecialchars($row['created_at']); ?></div>
+                                <div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end;">
+                                    <button onclick="applyForJob(<?php echo $row['id']; ?>)" style="background:#4fc3f7;color:#fff;border:none;padding:7px 14px;border-radius:6px;cursor:pointer;font-weight:bold;transition:background 0.2s;">Apply Now</button>
+                                </div>
+                            </div>
+                        <?php endwhile; ?>
+                    <?php else: ?>
+                        <div style="text-align:center;color:#ccc;padding:32px;background:#222;border-radius:12px;">
+                            <h3 style="margin:0 0 12px 0;color:#4fc3f7;">No Jobs Available</h3>
+                            <p style="margin:0;">Check back later for new job opportunities.</p>
+                        </div>
+                    <?php endif; ?>
                 </div>
             </div>
         </div>
@@ -269,5 +426,76 @@
             <a href="#">Report</a>
         </div>
     </div>
+
+    <div id="applicationModal" class="modal">
+        <div class="modal-content">
+            <h3 style="margin: 0 0 16px 0; color: #4fc3f7;">Confirm Application</h3>
+            <p>Are you sure you want to apply for this position?</p>
+            <div class="modal-buttons">
+                <button class="modal-button confirm-button" onclick="submitApplication()">Yes, Apply</button>
+                <button class="modal-button cancel-button" onclick="closeModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <?php if (isset($success_message)): ?>
+        <div class="message success-message"><?php echo htmlspecialchars($success_message); ?></div>
+    <?php endif; ?>
+    <?php if (isset($error_message)): ?>
+        <div class="message error-message"><?php echo htmlspecialchars($error_message); ?></div>
+    <?php endif; ?>
+
+    <script>
+    let currentJobId = null;
+
+    function applyForJob(jobId) {
+        <?php if (!isset($_SESSION['username'])): ?>
+            alert('Please login to apply for jobs');
+            window.location.href = 'login.php';
+        <?php else: ?>
+            currentJobId = jobId;
+            document.getElementById('applicationModal').style.display = 'flex';
+        <?php endif; ?>
+    }
+
+    function closeModal() {
+        document.getElementById('applicationModal').style.display = 'none';
+        currentJobId = null;
+    }
+
+    function submitApplication() {
+        if (currentJobId) {
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.style.display = 'none';
+            
+            const jobIdInput = document.createElement('input');
+            jobIdInput.type = 'hidden';
+            jobIdInput.name = 'job_id';
+            jobIdInput.value = currentJobId;
+            
+            const applyInput = document.createElement('input');
+            applyInput.type = 'hidden';
+            applyInput.name = 'apply_job';
+            applyInput.value = '1';
+            
+            form.appendChild(jobIdInput);
+            form.appendChild(applyInput);
+            document.body.appendChild(form);
+            form.submit();
+        }
+    }
+
+    // Close message after 3 seconds
+    document.addEventListener('DOMContentLoaded', function() {
+        const messages = document.querySelectorAll('.message');
+        messages.forEach(message => {
+            setTimeout(() => {
+                message.style.opacity = '0';
+                setTimeout(() => message.remove(), 500);
+            }, 3000);
+        });
+    });
+    </script>
 </body>
 </html> 

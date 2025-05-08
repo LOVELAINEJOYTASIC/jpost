@@ -1,4 +1,7 @@
 <?php
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+error_reporting(E_ALL);
 // Create database if it doesn't exist
 $host = 'localhost';
 $user = 'root';
@@ -33,6 +36,16 @@ $conn->query("CREATE TABLE IF NOT EXISTS users (
     user_type ENUM('jobseeker','employer') NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 )");
+// Create applications table if not exists
+$conn->query("CREATE TABLE IF NOT EXISTS job_applications (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    job_id INT NOT NULL,
+    user_id INT NOT NULL,
+    status ENUM('Pending', 'Accepted', 'Rejected') DEFAULT 'Pending',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+)");
 // Handle delete
 if (isset($_GET['delete'])) {
     $id = intval($_GET['delete']);
@@ -41,7 +54,7 @@ if (isset($_GET['delete'])) {
     exit();
 }
 // Handle edit (update)
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_id'])) {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_id']) && $_POST['edit_id'] !== '') {
     $id = intval($_POST['edit_id']);
     $company = $conn->real_escape_string($_POST['company']);
     $job = $conn->real_escape_string($_POST['job']);
@@ -52,17 +65,46 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_id'])) {
     exit();
 }
 // Handle new job post
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['edit_id']) && isset($_POST['company'], $_POST['job'], $_POST['requirements'], $_POST['salary'])) {
-    $company = $conn->real_escape_string($_POST['company']);
-    $job = $conn->real_escape_string($_POST['job']);
-    $requirements = $conn->real_escape_string($_POST['requirements']);
-    $salary = $conn->real_escape_string($_POST['salary']);
-    $conn->query("INSERT INTO jobs (company, job, requirements, salary) VALUES ('$company', '$job', '$requirements', '$salary')");
-    header('Location: dashboard.php');
-    exit();
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && (!isset($_POST['edit_id']) || $_POST['edit_id'] === '')) {
+    if (isset($_POST['company'], $_POST['job'], $_POST['requirements'], $_POST['salary'])) {
+        $company = $conn->real_escape_string($_POST['company']);
+        $job = $conn->real_escape_string($_POST['job']);
+        $requirements = $conn->real_escape_string($_POST['requirements']);
+        $salary = $conn->real_escape_string($_POST['salary']);
+        $sql = "INSERT INTO jobs (company, job, requirements, salary) VALUES ('$company', '$job', '$requirements', '$salary')";
+        if ($conn->query($sql)) {
+            header('Location: dashboard.php?success=1');
+            exit();
+        } else {
+            die('Error posting job: ' . $conn->error);
+        }
+    }
+}
+// Handle application status update
+if (isset($_POST['update_status'])) {
+    $application_id = (int)$_POST['application_id'];
+    $new_status = $conn->real_escape_string($_POST['status']);
+    $sql = "UPDATE job_applications SET status = ? WHERE id = ?";
+    $stmt = $conn->prepare($sql);
+    $stmt->bind_param("si", $new_status, $application_id);
+    if ($stmt->execute()) {
+        header('Location: dashboard.php?success=2');
+        exit();
+    }
+    $stmt->close();
 }
 // Fetch all jobs
 $jobs = $conn->query("SELECT * FROM jobs ORDER BY created_at DESC");
+// Fetch all applications for the employer's jobs
+$applications_sql = "SELECT ja.*, j.job, j.company, u.username, up.full_name, up.contact 
+                    FROM job_applications ja 
+                    INNER JOIN jobs j ON ja.job_id = j.id 
+                    INNER JOIN users u ON ja.user_id = u.id 
+                    LEFT JOIN user_profiles up ON u.id = up.user_id 
+                    ORDER BY ja.created_at DESC";
+$applications = $conn->query($applications_sql);
+// After fetching jobs
+echo '<div style="color:yellow;background:#222;padding:8px;">Jobs found: ' . ($jobs ? $jobs->num_rows : 0) . '</div>';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -164,6 +206,15 @@ $jobs = $conn->query("SELECT * FROM jobs ORDER BY created_at DESC");
             max-width: 340px;
             margin: auto 0;
             text-align: center;
+        }
+        .job-card .profile-image {
+            width: 120px;
+            height: 120px;
+            border-radius: 50%;
+            object-fit: cover;
+            margin: 0 auto 20px auto;
+            border: 3px solid #5bbcff;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
         }
         .job-card h2 {
             font-size: 2em;
@@ -343,32 +394,66 @@ $jobs = $conn->query("SELECT * FROM jobs ORDER BY created_at DESC");
     </div>
     <div class="dashboard-container">
         <div class="job-card">
-            <h2>Were Hiring!</h2>
+            <img src="uploads/professional_woman.jpg" alt="Professional Woman" class="profile-image">
+            <h2>Post a Job</h2>
             <div class="job-details">
-                <div>Company: M corp.</div>
-                <div>Job: Secretary</div>
-                <div>Requirements: College Grad</div>
-                <div>Salary: 30k</div>
+                <div>Fill in the details below to post a new job opening.</div>
             </div>
-            <button class="post-btn" id="openModalBtn">Post</button>
+            <button class="post-btn" id="openModalBtn">Post New Job</button>
         </div>
         <div class="dashboard-actions">
-            <button class="candidate-list">Candidate List</button>
+            <button class="candidate-list" onclick="showApplications()">Candidate List</button>
             <button class="resume">Resume</button>
             <button class="interview">Interview</button>
             <button class="recruit">Recruit</button>
         </div>
     </div>
+    <!-- Applications List -->
+    <div id="applicationsList" style="width:95%;max-width:1000px;margin:32px auto 0 auto;display:none;">
+        <h2 style="color:#4fc3f7;text-align:left;margin-bottom:12px;">Job Applications</h2>
+        <?php if ($applications && $applications->num_rows > 0): ?>
+            <div style="display:flex;flex-wrap:wrap;gap:18px;">
+            <?php while($app = $applications->fetch_assoc()): ?>
+                <div style="background:#fff;color:#222;border-radius:8px;box-shadow:0 2px 8px #0002;padding:18px 22px;min-width:220px;max-width:320px;flex:1;position:relative;">
+                    <div style="font-size:1.2em;font-weight:bold;margin-bottom:8px;color:#4fc3f7;"><?php echo htmlspecialchars($app['job']); ?></div>
+                    <div><b>Applicant:</b> <?php echo htmlspecialchars($app['full_name'] ?? $app['username']); ?></div>
+                    <div><b>Contact:</b> <?php echo htmlspecialchars($app['contact'] ?? 'Not provided'); ?></div>
+                    <div><b>Status:</b> <span style="color: <?php echo $app['status'] === 'Accepted' ? '#4caf50' : ($app['status'] === 'Rejected' ? '#f44336' : '#ff9800'); ?>"><?php echo htmlspecialchars($app['status']); ?></span></div>
+                    <div style="font-size:0.9em;color:#888;margin-top:8px;">Applied: <?php echo htmlspecialchars($app['created_at']); ?></div>
+                    <?php if ($app['status'] === 'Pending'): ?>
+                        <div style="margin-top:12px;display:flex;gap:8px;">
+                            <form method="POST" style="display:inline;">
+                                <input type="hidden" name="application_id" value="<?php echo $app['id']; ?>">
+                                <input type="hidden" name="status" value="Accepted">
+                                <input type="hidden" name="update_status" value="1">
+                                <button type="submit" style="background:#4caf50;color:#fff;border:none;padding:6px 14px;border-radius:6px;cursor:pointer;font-weight:bold;">Accept</button>
+                            </form>
+                            <form method="POST" style="display:inline;">
+                                <input type="hidden" name="application_id" value="<?php echo $app['id']; ?>">
+                                <input type="hidden" name="status" value="Rejected">
+                                <input type="hidden" name="update_status" value="1">
+                                <button type="submit" style="background:#f44336;color:#fff;border:none;padding:6px 14px;border-radius:6px;cursor:pointer;font-weight:bold;">Reject</button>
+                            </form>
+                        </div>
+                    <?php endif; ?>
+                </div>
+            <?php endwhile; ?>
+            </div>
+        <?php else: ?>
+            <div style="color:#ccc;text-align:center;padding:32px;background:#222;border-radius:8px;">
+                No applications received yet.
+            </div>
+        <?php endif; ?>
+    </div>
     <!-- Posted Jobs List -->
     <div style="width:95%;max-width:1000px;margin:32px auto 0 auto;">
-        <h2 style="color:#4fc3f7;text-align:left;margin-bottom:12px;">Posted Jobs</h2>
+        <h2 style="color:#4fc3f7;text-align:left;margin-bottom:12px;">Your Posted Jobs</h2>
         <?php if ($jobs && $jobs->num_rows > 0): ?>
             <div style="display:flex;flex-wrap:wrap;gap:18px;">
             <?php while($row = $jobs->fetch_assoc()): ?>
                 <div style="background:#fff;color:#222;border-radius:8px;box-shadow:0 2px 8px #0002;padding:18px 22px;min-width:220px;max-width:320px;flex:1;position:relative;">
-                    <div style="font-size:1.2em;font-weight:bold;margin-bottom:8px;">We're Hiring!</div>
+                    <div style="font-size:1.2em;font-weight:bold;margin-bottom:8px;color:#4fc3f7;"><?php echo htmlspecialchars($row['job']); ?></div>
                     <div><b>Company:</b> <?php echo htmlspecialchars($row['company']); ?></div>
-                    <div><b>Job:</b> <?php echo htmlspecialchars($row['job']); ?></div>
                     <div><b>Requirements:</b> <?php echo nl2br(htmlspecialchars($row['requirements'])); ?></div>
                     <div><b>Salary:</b> <?php echo htmlspecialchars($row['salary']); ?></div>
                     <div style="font-size:0.9em;color:#888;margin-top:8px;">Posted: <?php echo htmlspecialchars($row['created_at']); ?></div>
@@ -381,7 +466,9 @@ $jobs = $conn->query("SELECT * FROM jobs ORDER BY created_at DESC");
             <?php endwhile; ?>
             </div>
         <?php else: ?>
-            <div style="color:#ccc;">No jobs posted yet.</div>
+            <div style="color:#ccc;text-align:center;padding:32px;background:#222;border-radius:8px;">
+                No jobs posted yet. Click "Post New Job" to create your first job posting.
+            </div>
         <?php endif; ?>
     </div>
     <div class="footer">
@@ -395,6 +482,16 @@ $jobs = $conn->query("SELECT * FROM jobs ORDER BY created_at DESC");
         <div class="modal-content">
             <span class="close" id="closeModalBtn">&times;</span>
             <h2 id="modalTitle" style="text-align:center; margin-bottom: 18px;">Create Job Post</h2>
+            <?php if (isset($_GET['success'])): ?>
+                <div style="background: #4caf50; color: white; padding: 10px; border-radius: 4px; margin-bottom: 15px;">
+                    Job posted successfully!
+                </div>
+            <?php endif; ?>
+            <?php if (isset($_GET['error'])): ?>
+                <div style="background: #f44336; color: white; padding: 10px; border-radius: 4px; margin-bottom: 15px;">
+                    Error posting job. Please try again.
+                </div>
+            <?php endif; ?>
             <form id="jobPostForm" method="POST" autocomplete="off">
                 <input type="hidden" id="edit_id" name="edit_id" value="">
                 <label for="company">Company</label>
@@ -413,12 +510,6 @@ $jobs = $conn->query("SELECT * FROM jobs ORDER BY created_at DESC");
     // Modal logic
     document.getElementById('openModalBtn').onclick = function() {
         document.getElementById('postModal').style.display = 'block';
-        document.getElementById('modalTitle').innerText = 'Create Job Post';
-        document.getElementById('edit_id').value = '';
-        document.getElementById('company').value = '';
-        document.getElementById('job').value = '';
-        document.getElementById('requirements').value = '';
-        document.getElementById('salary').value = '';
     };
     document.getElementById('closeModalBtn').onclick = function() {
         document.getElementById('postModal').style.display = 'none';
@@ -438,6 +529,11 @@ $jobs = $conn->query("SELECT * FROM jobs ORDER BY created_at DESC");
         document.getElementById('job').value = job;
         document.getElementById('requirements').value = requirements;
         document.getElementById('salary').value = salary;
+    }
+    // Show/hide applications list
+    function showApplications() {
+        const applicationsList = document.getElementById('applicationsList');
+        applicationsList.style.display = applicationsList.style.display === 'none' ? 'block' : 'none';
     }
     </script>
 </body>

@@ -1,25 +1,42 @@
+<?php
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+error_reporting(E_ALL);
+session_start();
+require_once 'config.php';
+
+// Get database connection
+$conn = getDBConnection();
+
+// Initialize tables
+initializeTables($conn);
+
+// Remove any redirection logic that might interfere with login page access
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>JPOST</title>
+    <title>JPOST - Job Portal</title>
     <style>
         body {
-            background: #181818;
+            background: linear-gradient(135deg, #181818 60%, #232a34 100%);
             color: #fff;
             font-family: 'Segoe UI', Arial, sans-serif;
             margin: 0;
             padding: 0;
+            min-height: 100vh;
         }
         .navbar {
             display: flex;
             align-items: center;
             justify-content: space-between;
             padding: 0 32px;
-            background: #181818;
+            background: #181818cc;
             border-bottom: 2px solid #333;
             height: 60px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
         }
         .navbar .logo {
             display: flex;
@@ -27,11 +44,6 @@
             font-size: 1.7em;
             font-weight: bold;
             letter-spacing: 2px;
-            margin-right: 32px;
-        }
-        .navbar .logo img {
-            height: 32px;
-            margin-right: 8px;
         }
         .navbar nav {
             display: flex;
@@ -47,24 +59,68 @@
         .navbar nav a:hover {
             color: #4fc3f7;
         }
-        .navbar .spacer {
-            flex: 1;
+        .hero {
+            text-align: center;
+            padding: 80px 20px;
+            max-width: 800px;
+            margin: 0 auto;
         }
-        .navbar .search {
+        .hero h1 {
+            font-size: 3em;
+            margin-bottom: 20px;
+            color: #4fc3f7;
+        }
+        .hero p {
+            font-size: 1.2em;
+            color: #ccc;
+            margin-bottom: 40px;
+        }
+        .cta-buttons {
             display: flex;
-            align-items: center;
-            background: #222;
-            border-radius: 20px;
-            padding: 4px 12px;
+            gap: 20px;
+            justify-content: center;
         }
-        .navbar .search input {
+        .cta-button {
+            padding: 12px 32px;
+            border-radius: 24px;
+            font-size: 1.1em;
+            font-weight: bold;
+            text-decoration: none;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .primary-button {
+            background: #4fc3f7;
+            color: #222;
+        }
+        .secondary-button {
             background: transparent;
-            border: none;
             color: #fff;
-            outline: none;
-            padding: 6px 8px;
+            border: 2px solid #4fc3f7;
+        }
+        .cta-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        }
+        .footer {
+            width: 100%;
+            background: #181818;
+            border-top: 2px solid #333;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 18px 0;
+            position: fixed;
+            bottom: 0;
+            left: 0;
+        }
+        .footer a {
+            color: #fff;
+            text-decoration: underline;
+            margin: 0 18px;
             font-size: 1em;
-            width: 200px;
+        }
+        .footer a:hover {
+            color: #4fc3f7;
         }
         .navbar .search button {
             background: none;
@@ -164,14 +220,22 @@
             color: #fff;
         }
         .main-banner .banner-img {
-            max-width: 260px;
-            border-radius: 10px;
+            max-width: 320px;
+            border-radius: 16px;
             background: #fff;
-            padding: 8px;
+            padding: 12px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+            transition: transform 0.3s ease;
+        }
+        .main-banner .banner-img:hover {
+            transform: translateY(-5px);
         }
         .main-banner .banner-img img {
             width: 100%;
-            border-radius: 10px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            object-fit: cover;
+            height: 400px;
         }
         .main-banner .checklist {
             position: absolute;
@@ -179,27 +243,6 @@
             bottom: -30px;
             width: 180px;
             z-index: 1;
-        }
-        .footer {
-            width: 100%;
-            background: #181818;
-            border-top: 2px solid #333;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            padding: 18px 0 10px 0;
-            position: fixed;
-            bottom: 0;
-            left: 0;
-        }
-        .footer a {
-            color: #fff;
-            text-decoration: underline;
-            margin: 0 18px;
-            font-size: 1em;
-        }
-        .footer a:hover {
-            color: #4fc3f7;
         }
         @media (max-width: 800px) {
             .main-banner {
@@ -275,21 +318,36 @@
         <div class="logo">
             <span style="font-size:1.2em; margin-right:4px;">&#128188;</span> JPOST
         </div>
-        <nav style="margin-left: 24px; display: flex; align-items: center;">
+        <nav>
             <a href="index.php">Home</a>
             <a href="explore.php">Explore</a>
-            <a href="account.php">Account</a>
+            <?php if (isset($_SESSION['user_id'])): ?>
+                <a href="account.php">Account</a>
+                <?php if ($_SESSION['user_type'] === 'employer'): ?>
+                    <a href="dashboard.php">Dashboard</a>
+                <?php endif; ?>
+            <?php endif; ?>
         </nav>
         <div style="display:flex; align-items:center;">
-            <div class="search">
-                <input type="text" placeholder="Find your dream job at JPost">
-                <button>&#128269;</button>
-            </div>
-            <span class="settings">&#9881;</span>
+            <?php if (isset($_SESSION['user_id'])): ?>
+                <a href="logout.php" style="color:#fff; text-decoration:none; margin-right:18px;">Logout</a>
+            <?php else: ?>
+                <a href="login.php" style="color:#fff; text-decoration:none; margin-right:18px;">Login</a>
+                <a href="signup.php" style="background:#4fc3f7; color:#222; padding:8px 16px; border-radius:16px; text-decoration:none; font-weight:bold;">Sign Up</a>
+            <?php endif; ?>
         </div>
     </div>
+
+    <div class="hero">
+        <h1>Find Your Dream Job</h1>
+        <p>Connect with top employers and discover opportunities that match your skills and aspirations.</p>
+        <div class="cta-buttons">
+            <a href="signup.php" class="cta-button primary-button">Get Started</a>
+            <a href="explore.php" class="cta-button secondary-button">Browse Jobs</a>
+        </div>
+    </div>
+
     <div class="main-banner">
-        <img src="" class="checklist" alt="Checklist" />
         <div class="left">
             <h1><span style="color:#fff; font-style:italic; font-weight:700;">Connecting Talent with Opportunity!</span></h1>
             <div class="whats-new">
@@ -308,15 +366,9 @@
         </div>
         <div class="right">
             <div class="banner-img">
-                <img src="https://i.pinimg.com/736x/12/14/c7/1214c7112b9a353035eaea169981947e.jpg"Professional Woman" />
+                <img src="uploads/professional_woman.jpg" alt="Professional Woman" />
             </div>
         </div>
-    </div>
-    <div class="footer">
-        <a href="#">Security & Privacy</a>
-        <a href="#">Terms and Condition</a>
-        <a href="#">About</a>
-        <a href="#">Report</a>
     </div>
 
     <!-- Modal for Register -->
@@ -345,5 +397,10 @@
         }
     };
     </script>
+
+    <!-- Optionally, show a message if logged in -->
+    <?php if (isset($_SESSION['user_id'])): ?>
+        <div style="background:#222;color:#4fc3f7;text-align:center;padding:8px;">You are logged in as <b><?php echo htmlspecialchars($_SESSION['username']); ?></b> (<?php echo htmlspecialchars($_SESSION['user_type']); ?>).</div>
+    <?php endif; ?>
 </body>
 </html> 

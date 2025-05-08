@@ -1,31 +1,77 @@
 <?php
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+error_reporting(E_ALL);
 session_start();
-// Create database if it doesn't exist
+
+// Check if user is logged in
+if (!isset($_SESSION['user_id'])) {
+    header('Location: login.php');
+    exit();
+}
+
+// Create database connection
 $host = 'localhost';
 $user = 'root';
 $pass = '';
 $db = 'jpost';
-// Connect to MySQL server only (no db yet)
-$conn = new mysqli($host, $user, $pass);
-if ($conn->connect_error) {
-    die('Database connection failed: ' . $conn->connect_error);
-}
-$conn->query("CREATE DATABASE IF NOT EXISTS `$db`");
-$conn->close();
-// Now connect to the actual database
+
 $conn = new mysqli($host, $user, $pass, $db);
 if ($conn->connect_error) {
     die('Database connection failed: ' . $conn->connect_error);
 }
+
+// Create user_profiles table if not exists
+$conn->query("CREATE TABLE IF NOT EXISTS user_profiles (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    full_name VARCHAR(255),
+    birthday DATE,
+    address TEXT,
+    contact VARCHAR(255),
+    application TEXT,
+    avatar VARCHAR(255),
+    status ENUM('Active', 'Offline') DEFAULT 'Active',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+)");
+
+$success_message = '';
+$error_message = '';
+
 // Handle form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $_SESSION['full_name'] = $_POST['full_name'] ?? '';
-    $_SESSION['birthday'] = $_POST['birthday'] ?? '';
-    $_SESSION['address'] = $_POST['address'] ?? '';
-    $_SESSION['contact'] = $_POST['contact'] ?? '';
-    $_SESSION['application'] = $_POST['application'] ?? '';
-    $_SESSION['status'] = $_POST['status'] ?? 'Active';
+    $user_id = $_SESSION['user_id'];
+    $full_name = trim($conn->real_escape_string($_POST['full_name']));
+    $birthday = trim($conn->real_escape_string($_POST['birthday']));
+    $address = trim($conn->real_escape_string($_POST['address']));
+    $contact = trim($conn->real_escape_string($_POST['contact']));
+    $application = trim($conn->real_escape_string($_POST['application']));
+    $status = trim($conn->real_escape_string($_POST['status']));
+    
+    // Validate inputs
+    $errors = [];
+    if (empty($full_name)) {
+        $errors[] = "Full name is required";
+    }
+    if (empty($birthday)) {
+        $errors[] = "Birthday is required";
+    }
+    if (empty($address)) {
+        $errors[] = "Address is required";
+    }
+    if (empty($contact)) {
+        $errors[] = "Contact information is required";
+    } elseif (!filter_var($contact, FILTER_VALIDATE_EMAIL) && !preg_match('/^[0-9+\-\s()]{10,}$/', $contact)) {
+        $errors[] = "Please enter a valid email or phone number";
+    }
+    if (empty($application)) {
+        $errors[] = "Application letter is required";
+    }
+    
     // Handle file upload
+    $avatar_path = '';
     if (isset($_FILES['avatar']) && $_FILES['avatar']['error'] === UPLOAD_ERR_OK) {
         $uploads_dir = 'uploads';
         if (!is_dir($uploads_dir)) {
@@ -35,20 +81,149 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $ext = strtolower(pathinfo($_FILES['avatar']['name'], PATHINFO_EXTENSION));
         $allowed = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
         if (in_array($ext, $allowed)) {
-            $filename = 'avatar_' . session_id() . '.' . $ext;
+            // Check file size (max 5MB)
+            if ($_FILES['avatar']['size'] <= 5 * 1024 * 1024) {
+                $filename = 'avatar_' . $user_id . '_' . time() . '.' . $ext;
             $target = "$uploads_dir/$filename";
-            move_uploaded_file($tmp_name, $target);
-            $_SESSION['avatar'] = $target;
+                if (move_uploaded_file($tmp_name, $target)) {
+                    $avatar_path = $target;
+                    // Delete old avatar if exists
+                    if (isset($profile['avatar']) && $profile['avatar'] && file_exists($profile['avatar'])) {
+                        unlink($profile['avatar']);
+                    }
+                } else {
+                    $errors[] = "Failed to upload image";
+                }
+            } else {
+                $errors[] = "Image size should be less than 5MB";
+            }
+        } else {
+            $errors[] = "Invalid image format. Allowed formats: " . implode(', ', $allowed);
         }
     }
+    
+    if (empty($errors)) {
+        // Check if profile exists
+        $check_sql = "SELECT id FROM user_profiles WHERE user_id = ?";
+        $check_stmt = $conn->prepare($check_sql);
+        $check_stmt->bind_param("i", $user_id);
+        $check_stmt->execute();
+        $result = $check_stmt->get_result();
+        
+        if ($result->num_rows > 0) {
+            // Update existing profile
+            $profile = $result->fetch_assoc();
+            $sql = "UPDATE user_profiles SET 
+                    full_name = ?, 
+                    birthday = ?, 
+                    address = ?, 
+                    contact = ?, 
+                    application = ?, 
+                    status = ?";
+            
+            $params = [$full_name, $birthday, $address, $contact, $application, $status];
+            $types = "ssssss";
+            
+            if ($avatar_path) {
+                $sql .= ", avatar = ?";
+                $params[] = $avatar_path;
+                $types .= "s";
+            }
+            
+            $sql .= " WHERE user_id = ?";
+            $params[] = $user_id;
+            $types .= "i";
+            
+            $stmt = $conn->prepare($sql);
+            
+            // Create references for bind_param
+            $bind_params = array();
+            $bind_params[] = &$types;
+            for($i = 0; $i < count($params); $i++) {
+                $bind_params[] = &$params[$i];
+            }
+            
+            call_user_func_array(array($stmt, 'bind_param'), $bind_params);
+            
+            if ($stmt->execute()) {
+                $success_message = "Profile updated successfully!";
+                // Update session data
+                $_SESSION['user_name'] = $full_name;
+                $_SESSION['user_status'] = $status;
+            } else {
+                $error_message = "Error updating profile: " . $stmt->error;
+            }
+            $stmt->close();
+        } else {
+            // Insert new profile
+            $sql = "INSERT INTO user_profiles (user_id, full_name, birthday, address, contact, application, status, avatar) 
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
+            $stmt = $conn->prepare($sql);
+            
+            // Create references for bind_param
+            $avatar_default = $avatar_path ?: 'https://cdn-icons-png.flaticon.com/512/3135/3135715.png';
+            $bind_params = array(
+                &$user_id,
+                &$full_name,
+                &$birthday,
+                &$address,
+                &$contact,
+                &$application,
+                &$status,
+                &$avatar_default
+            );
+            
+            $types = "isssssss";
+            array_unshift($bind_params, $types);
+            
+            call_user_func_array(array($stmt, 'bind_param'), $bind_params);
+            
+            if ($stmt->execute()) {
+                $success_message = "Profile created successfully!";
+                // Update session data
+                $_SESSION['user_name'] = $full_name;
+                $_SESSION['user_status'] = $status;
+            } else {
+                $error_message = "Error creating profile: " . $stmt->error;
+            }
+            $stmt->close();
+        }
+        $check_stmt->close();
+    } else {
+        $error_message = implode("<br>", $errors);
+    }
 }
-$full_name = $_SESSION['full_name'] ?? '';
-$birthday = $_SESSION['birthday'] ?? '';
-$address = $_SESSION['address'] ?? '';
-$contact = $_SESSION['contact'] ?? '';
-$application = $_SESSION['application'] ?? '';
-$avatar = $_SESSION['avatar'] ?? 'https://cdn-icons-png.flaticon.com/512/3135/3135715.png';
-$status = $_SESSION['status'] ?? 'Active';
+
+// Fetch existing profile data
+$user_id = $_SESSION['user_id'];
+$sql = "SELECT * FROM user_profiles WHERE user_id = ?";
+$stmt = $conn->prepare($sql);
+$stmt->bind_param("i", $user_id);
+$stmt->execute();
+$result = $stmt->get_result();
+$profile = $result->fetch_assoc();
+
+// Fetch accepted jobs
+$accepted_jobs_sql = "SELECT j.*, ja.status, ja.created_at as applied_date 
+                      FROM jobs j 
+                      INNER JOIN job_applications ja ON j.id = ja.job_id 
+                      WHERE ja.user_id = ? AND ja.status IN ('Accepted', 'Pending')
+                      ORDER BY ja.created_at DESC";
+$accepted_jobs_stmt = $conn->prepare($accepted_jobs_sql);
+$accepted_jobs_stmt->bind_param("i", $user_id);
+$accepted_jobs_stmt->execute();
+$accepted_jobs = $accepted_jobs_stmt->get_result();
+
+// Set default values
+$full_name = $profile['full_name'] ?? '';
+$birthday = $profile['birthday'] ?? '';
+$address = $profile['address'] ?? '';
+$contact = $profile['contact'] ?? '';
+$application = $profile['application'] ?? '';
+$avatar = $profile['avatar'] ?? 'https://cdn-icons-png.flaticon.com/512/3135/3135715.png';
+$status = $profile['status'] ?? 'Active';
+
+$stmt->close();
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -221,6 +396,57 @@ $status = $_SESSION['status'] ?? 'Active';
                 height: 120px;
             }
         }
+        .message {
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            text-align: center;
+            width: 100%;
+        }
+        .success-message {
+            background: rgba(76, 175, 80, 0.1);
+            color: #4caf50;
+            border: 1px solid rgba(76, 175, 80, 0.2);
+        }
+        .error-message {
+            background: rgba(244, 67, 54, 0.1);
+            color: #f44336;
+            border: 1px solid rgba(244, 67, 54, 0.2);
+        }
+        .account-info input:focus,
+        .account-info textarea:focus {
+            outline: none;
+            box-shadow: 0 0 0 2px #4fc3f7;
+            transition: all 0.3s ease;
+        }
+        .account-info input,
+        .account-info textarea {
+            background: #222;
+            color: #fff;
+            border: 1px solid #333;
+            transition: all 0.3s ease;
+        }
+        .account-info input:hover,
+        .account-info textarea:hover {
+            border-color: #4fc3f7;
+        }
+        .message {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+            animation: slideIn 0.5s ease-out;
+        }
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
     </style>
 </head>
 <body>
@@ -243,6 +469,12 @@ $status = $_SESSION['status'] ?? 'Active';
     </div>
     <div class="account-container">
         <form class="account-content" method="POST" enctype="multipart/form-data">
+            <?php if ($success_message): ?>
+                <div class="message success-message"><?php echo htmlspecialchars($success_message); ?></div>
+            <?php endif; ?>
+            <?php if ($error_message): ?>
+                <div class="message error-message"><?php echo htmlspecialchars($error_message); ?></div>
+            <?php endif; ?>
             <div class="account-info">
                 <h2>Account Information</h2>
                 <ul style="list-style:none; padding:0; margin:0 0 12px 0;">
@@ -270,6 +502,29 @@ $status = $_SESSION['status'] ?? 'Active';
                 </div>
             </div>
         </form>
+        <div style="margin-top: 32px; padding: 0 48px;">
+            <h2 style="color: #4fc3f7; margin-bottom: 18px;">My Applications</h2>
+            <div style="display: flex; flex-wrap: wrap; gap: 18px;">
+                <?php if ($accepted_jobs && $accepted_jobs->num_rows > 0): ?>
+                    <?php while($job = $accepted_jobs->fetch_assoc()): ?>
+                        <div style="background: #232a34; padding: 18px; border-radius: 8px; flex: 1; min-width: 280px; max-width: 400px; border: 1px solid #4fc3f7;">
+                            <h3 style="color: #4fc3f7; margin: 0 0 12px 0;"><?php echo htmlspecialchars($job['job']); ?></h3>
+                            <p style="margin: 8px 0;"><strong>Company:</strong> <?php echo htmlspecialchars($job['company']); ?></p>
+                            <p style="margin: 8px 0;"><strong>Salary:</strong> <?php echo htmlspecialchars($job['salary']); ?></p>
+                            <p style="margin: 8px 0;"><strong>Requirements:</strong> <?php echo nl2br(htmlspecialchars($job['requirements'])); ?></p>
+                            <p style="margin: 8px 0; color: #4fc3f7;"><strong>Applied:</strong> <?php echo date('F j, Y', strtotime($job['applied_date'])); ?></p>
+                            <p style="margin: 8px 0; color: <?php echo $job['status'] === 'Accepted' ? '#4caf50' : '#ffc107'; ?>;">
+                                <strong>Status:</strong> <?php echo htmlspecialchars($job['status']); ?>
+                            </p>
+                        </div>
+                    <?php endwhile; ?>
+                <?php else: ?>
+                    <div style="background: #232a34; padding: 24px; border-radius: 8px; width: 100%; text-align: center; color: #888;">
+                        <p style="margin: 0;">No applications yet.</p>
+                    </div>
+                <?php endif; ?>
+            </div>
+        </div>
         <div class="footer">
             <a href="#">Security & Privacy</a>
             <a href="#">Terms and Condition</a>
