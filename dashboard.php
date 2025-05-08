@@ -1,12 +1,8 @@
 <?php
-<<<<<<< HEAD
 ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
-// Create database if it doesn't exist
-=======
 
->>>>>>> 376c003af479d721c1dc08bed472e3e7d386750b
 $host = 'localhost';
 $user = 'root';
 $pass = '';
@@ -40,7 +36,19 @@ $conn->query("CREATE TABLE IF NOT EXISTS users (
     user_type ENUM('jobseeker','employer') NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 )");
-<<<<<<< HEAD
+
+// Create user_profiles table if not exists
+$conn->query("CREATE TABLE IF NOT EXISTS user_profiles (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    full_name VARCHAR(255),
+    contact VARCHAR(100),
+    email VARCHAR(255),
+    resume VARCHAR(255),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+)");
+
 // Create applications table if not exists
 $conn->query("CREATE TABLE IF NOT EXISTS job_applications (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -51,16 +59,15 @@ $conn->query("CREATE TABLE IF NOT EXISTS job_applications (
     FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 )");
-// Handle delete
-=======
 
->>>>>>> 376c003af479d721c1dc08bed472e3e7d386750b
+// Handle delete
 if (isset($_GET['delete'])) {
     $id = intval($_GET['delete']);
     $conn->query("DELETE FROM jobs WHERE id=$id");
     header('Location: dashboard.php');
     exit();
 }
+
 // Handle edit (update)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_id']) && $_POST['edit_id'] !== '') {
     $id = intval($_POST['edit_id']);
@@ -72,7 +79,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_id']) && $_POST[
     header('Location: dashboard.php');
     exit();
 }
-<<<<<<< HEAD
+
 // Handle new job post
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && (!isset($_POST['edit_id']) || $_POST['edit_id'] === '')) {
     if (isset($_POST['company'], $_POST['job'], $_POST['requirements'], $_POST['salary'])) {
@@ -89,6 +96,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (!isset($_POST['edit_id']) || $_POS
         }
     }
 }
+
 // Handle application status update
 if (isset($_POST['update_status'])) {
     $application_id = (int)$_POST['application_id'];
@@ -101,28 +109,34 @@ if (isset($_POST['update_status'])) {
         exit();
     }
     $stmt->close();
-=======
-
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['edit_id']) && isset($_POST['company'], $_POST['job'], $_POST['requirements'], $_POST['salary'])) {
-    $company = $conn->real_escape_string($_POST['company']);
-    $job = $conn->real_escape_string($_POST['job']);
-    $requirements = $conn->real_escape_string($_POST['requirements']);
-    $salary = $conn->real_escape_string($_POST['salary']);
-    $conn->query("INSERT INTO jobs (company, job, requirements, salary) VALUES ('$company', '$job', '$requirements', '$salary')");
-    header('Location: dashboard.php');
-    exit();
->>>>>>> 376c003af479d721c1dc08bed472e3e7d386750b
 }
 
 $jobs = $conn->query("SELECT * FROM jobs ORDER BY created_at DESC");
+
+// Add search functionality
+$search_query = '';
+if (isset($_GET['search']) && !empty($_GET['search'])) {
+    $search = $conn->real_escape_string($_GET['search']);
+    $jobs = $conn->query("SELECT * FROM jobs WHERE job LIKE '%$search%' OR company LIKE '%$search%' OR requirements LIKE '%$search%' ORDER BY created_at DESC");
+    $search_query = htmlspecialchars($_GET['search']);
+}
+
 // Fetch all applications for the employer's jobs
-$applications_sql = "SELECT ja.*, j.job, j.company, u.username, up.full_name, up.contact 
+$applications_sql = "SELECT ja.*, j.job, j.company, u.username 
                     FROM job_applications ja 
                     INNER JOIN jobs j ON ja.job_id = j.id 
                     INNER JOIN users u ON ja.user_id = u.id 
-                    LEFT JOIN user_profiles up ON u.id = up.user_id 
                     ORDER BY ja.created_at DESC";
 $applications = $conn->query($applications_sql);
+
+// Handle logout
+if (isset($_GET['logout'])) {
+    session_start();
+    session_destroy();
+    header('Location: login.php');
+    exit();
+}
+
 // After fetching jobs
 echo '<div style="color:yellow;background:#222;padding:8px;">Jobs found: ' . ($jobs ? $jobs->num_rows : 0) . '</div>';
 ?>
@@ -391,6 +405,87 @@ echo '<div style="color:yellow;background:#222;padding:8px;">Jobs found: ' . ($j
             background: #0288d1;
             color: #fff;
         }
+        .search-container {
+            display: flex;
+            align-items: center;
+            background: #fff;
+            border-radius: 20px;
+            padding: 4px 12px;
+            width: 300px;
+        }
+        .search-container input {
+            background: transparent;
+            border: none;
+            color: #222;
+            outline: none;
+            padding: 6px 8px;
+            font-size: 1em;
+            width: 100%;
+        }
+        .search-container button {
+            background: none;
+            border: none;
+            color: #222;
+            cursor: pointer;
+            font-size: 1.2em;
+            padding: 0 8px;
+        }
+        .logout-btn {
+            background: #f44336;
+            color: #fff;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-left: 16px;
+            font-weight: bold;
+        }
+        .logout-btn:hover {
+            background: #d32f2f;
+        }
+        .candidate-card {
+            background: #fff;
+            color: #222;
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 16px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .candidate-card h3 {
+            color: #4fc3f7;
+            margin: 0 0 12px 0;
+        }
+        .candidate-info {
+            margin-bottom: 8px;
+        }
+        .candidate-actions {
+            display: flex;
+            gap: 8px;
+            margin-top: 12px;
+        }
+        .candidate-actions button {
+            padding: 6px 12px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        .view-resume {
+            background: #4fc3f7;
+            color: #fff;
+        }
+        .view-resume:hover {
+            background: #0288d1;
+        }
+        .status-badge {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.9em;
+            font-weight: bold;
+        }
+        .status-pending { background: #ffd700; color: #000; }
+        .status-accepted { background: #4caf50; color: #fff; }
+        .status-rejected { background: #f44336; color: #fff; }
     </style>
 </head>
 <body>
@@ -405,11 +500,11 @@ echo '<div style="color:yellow;background:#222;padding:8px;">Jobs found: ' . ($j
             <a href="dashboard.php" class="active">Dashboard</a>
         </nav>
         <div style="display:flex; align-items:center;">
-            <div class="search">
-                <input type="text" placeholder="Find your dream job at JPost">
-                <button>&#128269;</button>
-            </div>
-            <span class="settings">&#9881;</span>
+            <form action="dashboard.php" method="GET" class="search-container">
+                <input type="text" name="search" placeholder="Search jobs..." value="<?php echo $search_query; ?>">
+                <button type="submit">&#128269;</button>
+            </form>
+            <a href="?logout=1" class="logout-btn">Logout</a>
         </div>
     </div>
     <div class="dashboard-container">
@@ -428,7 +523,6 @@ echo '<div style="color:yellow;background:#222;padding:8px;">Jobs found: ' . ($j
             <button class="recruit">Recruit</button>
         </div>
     </div>
-<<<<<<< HEAD
     <!-- Applications List -->
     <div id="applicationsList" style="width:95%;max-width:1000px;margin:32px auto 0 auto;display:none;">
         <h2 style="color:#4fc3f7;text-align:left;margin-bottom:12px;">Job Applications</h2>
@@ -437,8 +531,8 @@ echo '<div style="color:yellow;background:#222;padding:8px;">Jobs found: ' . ($j
             <?php while($app = $applications->fetch_assoc()): ?>
                 <div style="background:#fff;color:#222;border-radius:8px;box-shadow:0 2px 8px #0002;padding:18px 22px;min-width:220px;max-width:320px;flex:1;position:relative;">
                     <div style="font-size:1.2em;font-weight:bold;margin-bottom:8px;color:#4fc3f7;"><?php echo htmlspecialchars($app['job']); ?></div>
-                    <div><b>Applicant:</b> <?php echo htmlspecialchars($app['full_name'] ?? $app['username']); ?></div>
-                    <div><b>Contact:</b> <?php echo htmlspecialchars($app['contact'] ?? 'Not provided'); ?></div>
+                    <div><b>Applicant:</b> <?php echo htmlspecialchars($app['username']); ?></div>
+                    <div><b>Company:</b> <?php echo htmlspecialchars($app['company']); ?></div>
                     <div><b>Status:</b> <span style="color: <?php echo $app['status'] === 'Accepted' ? '#4caf50' : ($app['status'] === 'Rejected' ? '#f44336' : '#ff9800'); ?>"><?php echo htmlspecialchars($app['status']); ?></span></div>
                     <div style="font-size:0.9em;color:#888;margin-top:8px;">Applied: <?php echo htmlspecialchars($app['created_at']); ?></div>
                     <?php if ($app['status'] === 'Pending'): ?>
@@ -467,9 +561,6 @@ echo '<div style="color:yellow;background:#222;padding:8px;">Jobs found: ' . ($j
         <?php endif; ?>
     </div>
     <!-- Posted Jobs List -->
-=======
-
->>>>>>> 376c003af479d721c1dc08bed472e3e7d386750b
     <div style="width:95%;max-width:1000px;margin:32px auto 0 auto;">
         <h2 style="color:#4fc3f7;text-align:left;margin-bottom:12px;">Your Posted Jobs</h2>
         <?php if ($jobs && $jobs->num_rows > 0): ?>
@@ -558,6 +649,30 @@ echo '<div style="color:yellow;background:#222;padding:8px;">Jobs found: ' . ($j
     function showApplications() {
         const applicationsList = document.getElementById('applicationsList');
         applicationsList.style.display = applicationsList.style.display === 'none' ? 'block' : 'none';
+        
+        // Scroll to applications list
+        if (applicationsList.style.display === 'block') {
+            applicationsList.scrollIntoView({ behavior: 'smooth' });
+        }
+    }
+
+    // Function to view resume
+    function viewResume(resumeUrl) {
+        if (resumeUrl) {
+            window.open(resumeUrl, '_blank');
+        } else {
+            alert('No resume available for this candidate.');
+        }
+    }
+
+    // Function to schedule interview
+    function scheduleInterview(applicationId) {
+        const date = prompt('Enter interview date (YYYY-MM-DD):');
+        const time = prompt('Enter interview time (HH:MM):');
+        if (date && time) {
+            // Here you would typically make an AJAX call to save the interview details
+            alert(`Interview scheduled for ${date} at ${time}`);
+        }
     }
     </script>
 </body>

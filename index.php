@@ -402,5 +402,9 @@ initializeTables($conn);
     <?php if (isset($_SESSION['user_id'])): ?>
         <div style="background:#222;color:#4fc3f7;text-align:center;padding:8px;">You are logged in as <b><?php echo htmlspecialchars($_SESSION['username']); ?></b> (<?php echo htmlspecialchars($_SESSION['user_type']); ?>).</div>
     <?php endif; ?>
+
+    <?php
+    error_log('user_type in session: ' . $_SESSION['user_type']);
+    ?>
 </body>
 </html> 

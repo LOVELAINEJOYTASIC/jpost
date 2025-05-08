@@ -13,9 +13,9 @@ $conn = getDBConnection();
 // Initialize tables if they don't exist
 initializeTables($conn);
 
-// Only redirect if user is already logged in
-if (isset($_SESSION['user_id'])) {
-    switch ($_SESSION['user_type']) {
+// Only redirect if user is already logged in AND this is not a POST request (i.e., not a login attempt)
+if (isset($_SESSION['user_id']) && $_SERVER['REQUEST_METHOD'] !== 'POST') {
+    switch (strtolower($_SESSION['user_type'])) {
         case 'admin':
             header('Location: admin.php');
             break;
@@ -52,20 +52,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             
             if ($result->num_rows === 1) {
                 $user = $result->fetch_assoc();
+                error_log("Login attempt - User found: " . print_r($user, true));
+                
                 if (password_verify($password, $user['password'])) {
-                    // Set session variables
+                    // Set session variables (force user_type to lowercase for consistency)
                     $_SESSION['user_id'] = $user['id'];
                     $_SESSION['username'] = $user['username'];
-                    $_SESSION['user_type'] = $user['user_type'];
+                    $_SESSION['user_type'] = strtolower($user['user_type']);
                     
-                    // Debug output
-                    error_log('LOGIN SESSION: ' . print_r($_SESSION, true));
+                    error_log("Login successful - Session set: " . print_r($_SESSION, true));
                     
                     // Robust redirection logic
-                    if (strtolower(trim($user['user_type'])) === 'admin') {
+                    if ($_SESSION['user_type'] === 'admin') {
                         header('Location: admin.php');
                         exit();
-                    } else if (strtolower(trim($user['user_type'])) === 'employer') {
+                    } else if ($_SESSION['user_type'] === 'employer') {
                         header('Location: dashboard.php');
                         exit();
                     } else {
@@ -74,9 +75,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
                 } else {
                     $error = 'Invalid password.';
+                    error_log("Login failed - Invalid password for user: " . $username);
                 }
             } else {
                 $error = 'User not found.';
+                error_log("Login failed - User not found: " . $username);
             }
             $stmt->close();
         }
