@@ -2,6 +2,13 @@
 ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
+session_start();
+
+// Only allow access if user is employer
+if (!isset($_SESSION['user_id']) || strtolower($_SESSION['user_type'] ?? '') !== 'employer') {
+    header('Location: login.php');
+    exit();
+}
 
 $host = 'localhost';
 $user = 'root';
@@ -504,7 +511,7 @@ echo '<div style="color:yellow;background:#222;padding:8px;">Jobs found: ' . ($j
                 <input type="text" name="search" placeholder="Search jobs..." value="<?php echo $search_query; ?>">
                 <button type="submit">&#128269;</button>
             </form>
-            <a href="?logout=1" class="logout-btn">Logout</a>
+            <a href="logout.php" style="color:#fff; text-decoration:none; margin-left:18px; background:#f44336; padding:8px 16px; border-radius:4px;">Logout</a>
         </div>
     </div>
     <div class="dashboard-container">

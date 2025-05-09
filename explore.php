@@ -3,6 +3,19 @@ ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
 session_start();
+
+// Redirect employers to dashboard
+if (isset($_SESSION['user_id']) && strtolower($_SESSION['user_type']) === 'employer') {
+    header('Location: dashboard.php');
+    exit();
+}
+
+// Redirect admins to admin page
+if (isset($_SESSION['user_id']) && strtolower($_SESSION['user_type']) === 'admin') {
+    header('Location: admin.php');
+    exit();
+}
+
 // Database connection
 $host = 'localhost';
 $user = 'root';
@@ -57,12 +70,6 @@ if (isset($_POST['apply_job']) && isset($_SESSION['user_id'])) {
 // Fetch all jobs
 $jobs = $conn->query("SELECT * FROM jobs ORDER BY created_at DESC");
 echo '<div style="color:yellow;background:#222;padding:8px;">Jobs found: ' . ($jobs ? $jobs->num_rows : 0) . '</div>';
-
-// Redirect only if employer
-if (isset($_SESSION['user_id']) && $_SESSION['user_type'] === 'employer') {
-    header('Location: dashboard.php');
-    exit();
-}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -369,8 +376,12 @@ if (isset($_SESSION['user_id']) && $_SESSION['user_type'] === 'employer') {
             <a href="account.php">Account</a>
         </nav>
         <div style="display:flex; align-items:center;">
-            <a href="login.php" style="color:#fff; text-decoration:none; margin-right:18px;">Login</a>
-            <a href="signup.php" style="background:#4fc3f7; color:#222; padding:8px 16px; border-radius:16px; text-decoration:none; font-weight:bold;">Sign Up</a>
+            <?php if (isset($_SESSION['user_id'])): ?>
+                <a href="logout.php" style="color:#fff; text-decoration:none; margin-right:18px; background:#f44336; padding:8px 16px; border-radius:4px;">Logout</a>
+            <?php else: ?>
+                <a href="login.php" style="color:#fff; text-decoration:none; margin-right:18px;">Login</a>
+                <a href="signup.php" style="background:#4fc3f7; color:#222; padding:8px 16px; border-radius:16px; text-decoration:none; font-weight:bold;">Sign Up</a>
+            <?php endif; ?>
         </div>
     </div>
     <div class="explore-container">

@@ -1,17 +1,25 @@
 <?php
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+error_reporting(E_ALL);
+
 session_start();
-// Optional: Only allow access if user is admin
-// if (!isset($_SESSION['user_id']) || strtolower($_SESSION['user_type'] ?? '') !== 'admin') {
-//     header('Location: login.php');
-//     exit();
-// }
+
+// Only allow access if user is admin
+if (!isset($_SESSION['user_id']) || strtolower($_SESSION['user_type'] ?? '') !== 'admin') {
+    header('Location: login.php?error=unauthorized');
+    exit();
+}
+
+require_once 'config.php';
+$conn = getDBConnection();
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Admin - JPOST</title>
+    <title>Admin Dashboard - JPOST</title>
     <style>
         body {
             background: #181818;
@@ -161,6 +169,7 @@ session_start();
                 <button type="submit">&#128269;</button>
             </form>
             <span class="settings">&#9881;</span>
+            <a href="logout.php" style="color:#fff; text-decoration:none; margin-left:18px; background:#f44336; padding:8px 16px; border-radius:4px;">Logout</a>
         </div>
     </div>
     <div class="admin-btns-container">

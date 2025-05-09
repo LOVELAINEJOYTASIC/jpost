@@ -330,7 +330,7 @@ initializeTables($conn);
         </nav>
         <div style="display:flex; align-items:center;">
             <?php if (isset($_SESSION['user_id'])): ?>
-                <a href="logout.php" style="color:#fff; text-decoration:none; margin-right:18px;">Logout</a>
+                <a href="logout.php" style="color:#fff; text-decoration:none; margin-right:18px; background:#f44336; padding:8px 16px; border-radius:4px;">Logout</a>
             <?php else: ?>
                 <a href="login.php" style="color:#fff; text-decoration:none; margin-right:18px;">Login</a>
                 <a href="signup.php" style="background:#4fc3f7; color:#222; padding:8px 16px; border-radius:16px; text-decoration:none; font-weight:bold;">Sign Up</a>

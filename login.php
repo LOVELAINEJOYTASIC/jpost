@@ -124,53 +124,64 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             display: block;
             margin-bottom: 8px;
             color: #ccc;
+            font-size: 1.1em;
         }
         .form-group input {
             width: 100%;
-            padding: 12px;
+            padding: 14px 16px;
             border: none;
-            border-radius: 6px;
+            border-radius: 8px;
             background: #fff;
             color: #222;
-            font-size: 1em;
+            font-size: 1.1em;
+            box-sizing: border-box;
+            transition: all 0.3s ease;
         }
         .form-group input:focus {
             outline: 2px solid #4fc3f7;
+            box-shadow: 0 0 8px rgba(79, 195, 247, 0.3);
         }
         .error {
             color: #ff5252;
             background: #fff3f3;
-            padding: 8px 12px;
-            border-radius: 6px;
+            padding: 12px 16px;
+            border-radius: 8px;
             margin-bottom: 20px;
-            font-size: 0.9em;
+            font-size: 1em;
         }
         .login-button {
             width: 100%;
-            padding: 12px;
+            padding: 14px;
             background: #4fc3f7;
             color: #222;
             border: none;
-            border-radius: 6px;
-            font-size: 1.1em;
+            border-radius: 8px;
+            font-size: 1.2em;
             font-weight: bold;
             cursor: pointer;
-            transition: background 0.2s;
+            transition: all 0.3s ease;
+            margin-top: 8px;
         }
         .login-button:hover {
             background: #0288d1;
             color: #fff;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
         }
         .signup-link {
             text-align: center;
-            margin-top: 20px;
+            margin-top: 24px;
             color: #ccc;
+            font-size: 1.1em;
         }
         .signup-link a {
             color: #4fc3f7;
             text-decoration: none;
+            font-weight: 500;
+            transition: color 0.3s ease;
         }
         .signup-link a:hover {
+            color: #0288d1;
             text-decoration: underline;
         }
     </style>
