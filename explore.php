@@ -10,12 +10,6 @@ if (isset($_SESSION['user_id']) && strtolower($_SESSION['user_type']) === 'emplo
     exit();
 }
 
-// Redirect admins to admin page
-if (isset($_SESSION['user_id']) && strtolower($_SESSION['user_type']) === 'admin') {
-    header('Location: admin.php');
-    exit();
-}
-
 // Database connection
 $host = 'localhost';
 $user = 'root';
@@ -67,8 +61,48 @@ if (isset($_POST['apply_job']) && isset($_SESSION['user_id'])) {
     $check_stmt->close();
 }
 
+// Add search functionality
+$search_query = '';
+$job_type = '';
+if (isset($_GET['search']) && !empty($_GET['search'])) {
+    $search = $conn->real_escape_string($_GET['search']);
+    $search_query = htmlspecialchars($_GET['search']);
+}
+
+if (isset($_GET['type']) && !empty($_GET['type'])) {
+    $job_type = $conn->real_escape_string($_GET['type']);
+}
+
+// Add advanced search parameters
+$salary_min = isset($_GET['salary_min']) ? (int)$_GET['salary_min'] : '';
+$salary_max = isset($_GET['salary_max']) ? (int)$_GET['salary_max'] : '';
+$location = isset($_GET['location']) ? $conn->real_escape_string($_GET['location']) : '';
+$experience = isset($_GET['experience']) ? $conn->real_escape_string($_GET['experience']) : '';
+
+// Modify the jobs query to include search and filters
+$jobs_query = "SELECT * FROM jobs WHERE 1=1";
+if (!empty($search_query)) {
+    $jobs_query .= " AND (job LIKE '%$search%' OR company LIKE '%$search%' OR requirements LIKE '%$search%' OR salary LIKE '%$search%')";
+}
+if (!empty($job_type)) {
+    $jobs_query .= " AND job_type = '$job_type'";
+}
+if (!empty($location)) {
+    $jobs_query .= " AND location LIKE '%$location%'";
+}
+if (!empty($experience)) {
+    $jobs_query .= " AND experience_level = '$experience'";
+}
+if (!empty($salary_min)) {
+    $jobs_query .= " AND CAST(REPLACE(REPLACE(salary, '₱', ''), ',', '') AS DECIMAL) >= $salary_min";
+}
+if (!empty($salary_max)) {
+    $jobs_query .= " AND CAST(REPLACE(REPLACE(salary, '₱', ''), ',', '') AS DECIMAL) <= $salary_max";
+}
+$jobs_query .= " ORDER BY created_at DESC";
+$jobs = $conn->query($jobs_query);
+
 // Fetch all jobs
-$jobs = $conn->query("SELECT * FROM jobs ORDER BY created_at DESC");
 echo '<div style="color:yellow;background:#222;padding:8px;">Jobs found: ' . ($jobs ? $jobs->num_rows : 0) . '</div>';
 ?>
 <!DOCTYPE html>
@@ -125,6 +159,7 @@ echo '<div style="color:yellow;background:#222;padding:8px;">Jobs found: ' . ($j
             border-radius: 20px;
             padding: 4px 12px;
             box-shadow: 0 2px 8px rgba(0,0,0,0.10);
+            width: 300px;
         }
         .navbar .search input {
             background: transparent;
@@ -133,7 +168,7 @@ echo '<div style="color:yellow;background:#222;padding:8px;">Jobs found: ' . ($j
             outline: none;
             padding: 6px 8px;
             font-size: 1em;
-            width: 200px;
+            width: 100%;
         }
         .navbar .search button {
             background: none;
@@ -141,6 +176,7 @@ echo '<div style="color:yellow;background:#222;padding:8px;">Jobs found: ' . ($j
             color: #222;
             cursor: pointer;
             font-size: 1.2em;
+            padding: 4px 8px;
         }
         .navbar .settings {
             margin-left: 18px;
@@ -150,8 +186,8 @@ echo '<div style="color:yellow;background:#222;padding:8px;">Jobs found: ' . ($j
         }
         .explore-container {
             margin: 48px auto 0 auto;
-            width: 95%;
-            max-width: 950px;
+            width: 98%;
+            max-width: 1400px;
             min-width: 320px;
             background: #232a34ee;
             border-radius: 20px;
@@ -295,8 +331,8 @@ echo '<div style="color:yellow;background:#222;padding:8px;">Jobs found: ' . ($j
             position: fixed;
             top: 0;
             left: 0;
-            width: 100%;
-            height: 100%;
+            width: 300%;
+            height: 200%;
             background: rgba(0,0,0,0.8);
             z-index: 1000;
             justify-content: center;
@@ -307,7 +343,7 @@ echo '<div style="color:yellow;background:#222;padding:8px;">Jobs found: ' . ($j
             padding: 24px;
             border-radius: 12px;
             width: 90%;
-            max-width: 400px;
+            max-width: 800px;
             text-align: center;
             border: 2px solid #4fc3f7;
         }
@@ -363,6 +399,11 @@ echo '<div style="color:yellow;background:#222;padding:8px;">Jobs found: ' . ($j
                 opacity: 1;
             }
         }
+        .bubble.active {
+            border: 2px solid #fff;
+            background: #222 !important;
+            color: #4fc3f7 !important;
+        }
     </style>
 </head>
 <body>
@@ -376,10 +417,14 @@ echo '<div style="color:yellow;background:#222;padding:8px;">Jobs found: ' . ($j
             <a href="account.php">Account</a>
         </nav>
         <div style="display:flex; align-items:center;">
+            <form action="explore.php" method="GET" class="search">
+                <input type="text" name="search" placeholder="Search jobs..." value="<?php echo htmlspecialchars($search_query); ?>">
+                <button type="submit">&#128269;</button>
+            </form>
             <?php if (isset($_SESSION['user_id'])): ?>
-                <a href="logout.php" style="color:#fff; text-decoration:none; margin-right:18px; background:#f44336; padding:8px 16px; border-radius:4px;">Logout</a>
+                <a href="logout.php" style="color:#fff; text-decoration:none; margin-left:18px; background:#f44336; padding:8px 16px; border-radius:4px;">Logout</a>
             <?php else: ?>
-                <a href="login.php" style="color:#fff; text-decoration:none; margin-right:18px;">Login</a>
+                <a href="login.php" style="color:#fff; text-decoration:none; margin-left:18px;">Login</a>
                 <a href="signup.php" style="background:#4fc3f7; color:#222; padding:8px 16px; border-radius:16px; text-decoration:none; font-weight:bold;">Sign Up</a>
             <?php endif; ?>
         </div>
@@ -392,16 +437,54 @@ echo '<div style="color:yellow;background:#222;padding:8px;">Jobs found: ' . ($j
                 <img src="https://cdn-icons-png.flaticon.com/512/3135/3135715.png" alt="People Icon" style="width:60px; height:60px;">
             </div>
             <div class="explore-main">
-                <div class="explore-search-bar">
-                    <input type="text" placeholder="Search jobs, locations, or skills..." style="border:none;outline:none;background:transparent;width:80%;font-size:1.1em;color:#222;">
-                    <span class="search-icon">&#128269;</span>
+                <div class="explore-search-bar" style="margin-bottom: 12px;">
+                    <form action="explore.php" method="GET" style="display:flex;width:100%;align-items:center;gap:12px;">
+                        <input type="text" name="search" placeholder="Search jobs, locations, or skills..." value="<?php echo $search_query; ?>" style="border:none;outline:none;background:transparent;width:80%;font-size:1.1em;color:#222;">
+                        <button type="submit" style="background:none;border:none;cursor:pointer;font-size:1.3em;color:#222;">&#128269;</button>
+                    </form>
                 </div>
+
+                <div class="advanced-search" style="background:#fff;border-radius:12px;padding:16px;margin:0 32px 24px 32px;">
+                    <form action="explore.php" method="GET" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;">
+                        <input type="hidden" name="search" value="<?php echo $search_query; ?>">
+                        <input type="hidden" name="type" value="<?php echo $job_type; ?>">
+                        
+                        <div>
+                            <label style="display:block;color:#222;margin-bottom:4px;font-weight:500;">Salary Range</label>
+                            <div style="display:flex;gap:8px;align-items:center;">
+                                <input type="number" name="salary_min" placeholder="Min" value="<?php echo $salary_min; ?>" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;">
+                                <span style="color:#666;">to</span>
+                                <input type="number" name="salary_max" placeholder="Max" value="<?php echo $salary_max; ?>" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;">
+                            </div>
+                        </div>
+                        
+                        <div>
+                            <label style="display:block;color:#222;margin-bottom:4px;font-weight:500;">Location</label>
+                            <input type="text" name="location" placeholder="Enter location" value="<?php echo htmlspecialchars($location); ?>" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;">
+                        </div>
+                        
+                        <div>
+                            <label style="display:block;color:#222;margin-bottom:4px;font-weight:500;">Experience Level</label>
+                            <select name="experience" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;">
+                                <option value="">Any Experience</option>
+                                <option value="Entry Level" <?php echo $experience === 'Entry Level' ? 'selected' : ''; ?>>Entry Level</option>
+                                <option value="Mid Level" <?php echo $experience === 'Mid Level' ? 'selected' : ''; ?>>Mid Level</option>
+                                <option value="Senior Level" <?php echo $experience === 'Senior Level' ? 'selected' : ''; ?>>Senior Level</option>
+                            </select>
+                        </div>
+                        
+                        <div style="display:flex;align-items:flex-end;">
+                            <button type="submit" style="background:#4fc3f7;color:#222;border:none;padding:8px 24px;border-radius:6px;font-weight:bold;cursor:pointer;width:100%;">Apply Filters</button>
+                        </div>
+                    </form>
+                </div>
+
                 <div class="explore-bubbles">
-                    <div class="bubble bubble1">All Jobs</div>
-                    <div class="bubble bubble2">Full Time</div>
-                    <div class="bubble bubble3">Part Time</div>
-                    <div class="bubble bubble4">Remote</div>
-                    <div class="bubble bubble5">Internship</div>
+                    <a href="explore.php<?php echo !empty($search_query) ? '?search=' . urlencode($search_query) : ''; ?>" class="bubble bubble1 <?php echo empty($job_type) ? 'active' : ''; ?>">All Jobs</a>
+                    <a href="explore.php?type=Full Time<?php echo !empty($search_query) ? '&search=' . urlencode($search_query) : ''; ?>" class="bubble bubble2 <?php echo $job_type === 'Full Time' ? 'active' : ''; ?>">Full Time</a>
+                    <a href="explore.php?type=Part Time<?php echo !empty($search_query) ? '&search=' . urlencode($search_query) : ''; ?>" class="bubble bubble3 <?php echo $job_type === 'Part Time' ? 'active' : ''; ?>">Part Time</a>
+                    <a href="explore.php?type=Remote<?php echo !empty($search_query) ? '&search=' . urlencode($search_query) : ''; ?>" class="bubble bubble4 <?php echo $job_type === 'Remote' ? 'active' : ''; ?>">Remote</a>
+                    <a href="explore.php?type=Internship<?php echo !empty($search_query) ? '&search=' . urlencode($search_query) : ''; ?>" class="bubble bubble5 <?php echo $job_type === 'Internship' ? 'active' : ''; ?>">Internship</a>
                 </div>
                 
                 <!-- Jobs List -->
@@ -455,6 +538,39 @@ echo '<div style="color:yellow;background:#222;padding:8px;">Jobs found: ' . ($j
     <?php if (isset($error_message)): ?>
         <div class="message error-message"><?php echo htmlspecialchars($error_message); ?></div>
     <?php endif; ?>
+
+    <div style="color:yellow;background:#222;padding:8px;margin:8px 32px;">
+        Search Results: 
+        <?php if (!empty($search_query) || !empty($job_type) || !empty($location) || !empty($experience) || !empty($salary_min) || !empty($salary_max)): ?>
+            Found <?php echo $jobs->num_rows; ?> jobs
+            <?php if (!empty($search_query)): ?>
+                matching "<?php echo $search_query; ?>"
+            <?php endif; ?>
+            <?php if (!empty($job_type)): ?>
+                in <?php echo $job_type; ?>
+            <?php endif; ?>
+            <?php if (!empty($location)): ?>
+                near <?php echo htmlspecialchars($location); ?>
+            <?php endif; ?>
+            <?php if (!empty($experience)): ?>
+                requiring <?php echo htmlspecialchars($experience); ?> experience
+            <?php endif; ?>
+            <?php if (!empty($salary_min) || !empty($salary_max)): ?>
+                with salary range 
+                <?php 
+                    if (!empty($salary_min) && !empty($salary_max)) {
+                        echo "₱" . number_format($salary_min) . " - ₱" . number_format($salary_max);
+                    } elseif (!empty($salary_min)) {
+                        echo "from ₱" . number_format($salary_min);
+                    } elseif (!empty($salary_max)) {
+                        echo "up to ₱" . number_format($salary_max);
+                    }
+                ?>
+            <?php endif; ?>
+        <?php else: ?>
+            Showing all jobs
+        <?php endif; ?>
+    </div>
 
     <script>
     let currentJobId = null;

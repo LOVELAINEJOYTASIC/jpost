@@ -5,14 +5,101 @@ error_reporting(E_ALL);
 
 session_start();
 
+// Debug information
+error_log("Admin page accessed - Session contents: " . print_r($_SESSION, true));
+
 // Only allow access if user is admin
-if (!isset($_SESSION['user_id']) || strtolower($_SESSION['user_type'] ?? '') !== 'admin') {
-    header('Location: login.php?error=unauthorized');
+if (!isset($_SESSION['user_id'])) {
+    error_log("No user_id in session - Redirecting to login");
+    header('Location: login.php?error=not_logged_in');
     exit();
 }
 
 require_once 'config.php';
 $conn = getDBConnection();
+
+// Check if user is admin
+$user_id = $_SESSION['user_id'];
+error_log("Checking admin status for user_id: " . $user_id);
+
+$check_admin = $conn->prepare("SELECT user_type FROM users WHERE id = ?");
+$check_admin->bind_param("i", $user_id);
+$check_admin->execute();
+$result = $check_admin->get_result();
+$user = $result->fetch_assoc();
+
+error_log("Database user data: " . print_r($user, true));
+error_log("Session user_type: " . ($_SESSION['user_type'] ?? 'not set'));
+
+if (!$user || strtolower($user['user_type']) !== 'admin') {
+    error_log("Access denied - User type is not admin: " . ($user['user_type'] ?? 'not set'));
+    header('Location: index.php?error=unauthorized');
+    exit();
+}
+
+error_log("Access granted - User is admin");
+$check_admin->close();
+
+// Add search functionality
+$search_query = '';
+$search_type = 'all'; // Default to searching all
+
+if (isset($_GET['search']) && !empty($_GET['search'])) {
+    $search = $conn->real_escape_string($_GET['search']);
+    $search_query = htmlspecialchars($_GET['search']);
+}
+
+if (isset($_GET['type']) && !empty($_GET['type'])) {
+    $search_type = $conn->real_escape_string($_GET['type']);
+}
+
+// Add advanced search parameters
+$user_type = isset($_GET['user_type']) ? $conn->real_escape_string($_GET['user_type']) : '';
+$job_type = isset($_GET['job_type']) ? $conn->real_escape_string($_GET['job_type']) : '';
+$date_from = isset($_GET['date_from']) ? $conn->real_escape_string($_GET['date_from']) : '';
+$date_to = isset($_GET['date_to']) ? $conn->real_escape_string($_GET['date_to']) : '';
+
+// Modify the queries to include advanced filters
+$users_query = "SELECT * FROM users WHERE 1=1";
+$jobs_query = "SELECT * FROM jobs WHERE 1=1";
+
+if (!empty($search_query)) {
+    if ($search_type === 'all' || $search_type === 'users') {
+        $users_query .= " AND (username LIKE '%$search%' OR user_type LIKE '%$search%' OR email LIKE '%$search%')";
+    }
+    if ($search_type === 'all' || $search_type === 'jobs') {
+        $jobs_query .= " AND (job LIKE '%$search%' OR company LIKE '%$search%' OR requirements LIKE '%$search%' OR salary LIKE '%$search%')";
+    }
+}
+
+if (!empty($user_type) && ($search_type === 'all' || $search_type === 'users')) {
+    $users_query .= " AND user_type = '$user_type'";
+}
+
+if (!empty($job_type) && ($search_type === 'all' || $search_type === 'jobs')) {
+    $jobs_query .= " AND job_type = '$job_type'";
+}
+
+if (!empty($date_from)) {
+    if ($search_type === 'all' || $search_type === 'users') {
+        $users_query .= " AND created_at >= '$date_from'";
+    }
+    if ($search_type === 'all' || $search_type === 'jobs') {
+        $jobs_query .= " AND created_at >= '$date_from'";
+    }
+}
+
+if (!empty($date_to)) {
+    if ($search_type === 'all' || $search_type === 'users') {
+        $users_query .= " AND created_at <= '$date_to'";
+    }
+    if ($search_type === 'all' || $search_type === 'jobs') {
+        $jobs_query .= " AND created_at <= '$date_to'";
+    }
+}
+
+$users = $conn->query($users_query);
+$jobs = $conn->query($jobs_query);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -164,8 +251,13 @@ $conn = getDBConnection();
             <a href="account.php">Account</a>
         </nav>
         <div style="display:flex; align-items:center;">
-            <form class="search" style="margin:0;">
-                <input type="text" placeholder="Find your dream job at JPost">
+            <form class="search" style="margin:0;" action="admin.php" method="GET">
+                <input type="text" name="search" placeholder="Search users or jobs..." value="<?php echo $search_query; ?>">
+                <select name="type" style="background:transparent;border:none;color:#222;outline:none;margin-right:8px;">
+                    <option value="all" <?php echo $search_type === 'all' ? 'selected' : ''; ?>>All</option>
+                    <option value="users" <?php echo $search_type === 'users' ? 'selected' : ''; ?>>Users</option>
+                    <option value="jobs" <?php echo $search_type === 'jobs' ? 'selected' : ''; ?>>Jobs</option>
+                </select>
                 <button type="submit">&#128269;</button>
             </form>
             <span class="settings">&#9881;</span>
@@ -187,6 +279,79 @@ $conn = getDBConnection();
         <a href="#">Terms and Condition</a>
         <a href="#">About</a>
         <a href="#">Report</a>
+    </div>
+    <div style="color:yellow;background:#222;padding:8px;margin:8px 32px;">
+        Search Results: 
+        <?php if (!empty($search_query) || !empty($user_type) || !empty($job_type) || !empty($date_from) || !empty($date_to)): ?>
+            Found <?php echo $users->num_rows; ?> users and <?php echo $jobs->num_rows; ?> jobs
+            <?php if (!empty($search_query)): ?>
+                matching "<?php echo $search_query; ?>"
+            <?php endif; ?>
+            <?php if (!empty($user_type)): ?>
+                with user type <?php echo htmlspecialchars($user_type); ?>
+            <?php endif; ?>
+            <?php if (!empty($job_type)): ?>
+                with job type <?php echo htmlspecialchars($job_type); ?>
+            <?php endif; ?>
+            <?php if (!empty($date_from) || !empty($date_to)): ?>
+                created between 
+                <?php 
+                    if (!empty($date_from) && !empty($date_to)) {
+                        echo date('M d, Y', strtotime($date_from)) . " and " . date('M d, Y', strtotime($date_to));
+                    } elseif (!empty($date_from)) {
+                        echo "after " . date('M d, Y', strtotime($date_from));
+                    } elseif (!empty($date_to)) {
+                        echo "before " . date('M d, Y', strtotime($date_to));
+                    }
+                ?>
+            <?php endif; ?>
+        <?php else: ?>
+            Showing all users and jobs
+        <?php endif; ?>
+    </div>
+    <div class="advanced-search" style="background:#fff;border-radius:12px;padding:16px;margin:16px 32px;">
+        <form action="admin.php" method="GET" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;">
+            <input type="hidden" name="search" value="<?php echo $search_query; ?>">
+            <input type="hidden" name="type" value="<?php echo $search_type; ?>">
+            
+            <?php if ($search_type === 'all' || $search_type === 'users'): ?>
+            <div>
+                <label style="display:block;color:#222;margin-bottom:4px;font-weight:500;">User Type</label>
+                <select name="user_type" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;">
+                    <option value="">All User Types</option>
+                    <option value="admin" <?php echo $user_type === 'admin' ? 'selected' : ''; ?>>Admin</option>
+                    <option value="employer" <?php echo $user_type === 'employer' ? 'selected' : ''; ?>>Employer</option>
+                    <option value="user" <?php echo $user_type === 'user' ? 'selected' : ''; ?>>User</option>
+                </select>
+            </div>
+            <?php endif; ?>
+            
+            <?php if ($search_type === 'all' || $search_type === 'jobs'): ?>
+            <div>
+                <label style="display:block;color:#222;margin-bottom:4px;font-weight:500;">Job Type</label>
+                <select name="job_type" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;">
+                    <option value="">All Job Types</option>
+                    <option value="Full Time" <?php echo $job_type === 'Full Time' ? 'selected' : ''; ?>>Full Time</option>
+                    <option value="Part Time" <?php echo $job_type === 'Part Time' ? 'selected' : ''; ?>>Part Time</option>
+                    <option value="Remote" <?php echo $job_type === 'Remote' ? 'selected' : ''; ?>>Remote</option>
+                    <option value="Internship" <?php echo $job_type === 'Internship' ? 'selected' : ''; ?>>Internship</option>
+                </select>
+            </div>
+            <?php endif; ?>
+            
+            <div>
+                <label style="display:block;color:#222;margin-bottom:4px;font-weight:500;">Date Range</label>
+                <div style="display:flex;gap:8px;align-items:center;">
+                    <input type="date" name="date_from" value="<?php echo $date_from; ?>" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;">
+                    <span style="color:#666;">to</span>
+                    <input type="date" name="date_to" value="<?php echo $date_to; ?>" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;">
+                </div>
+            </div>
+            
+            <div style="display:flex;align-items:flex-end;">
+                <button type="submit" style="background:#4fc3f7;color:#222;border:none;padding:8px 24px;border-radius:6px;font-weight:bold;cursor:pointer;width:100%;">Apply Filters</button>
+            </div>
+        </form>
     </div>
 </body>
 </html> 

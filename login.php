@@ -4,88 +4,70 @@ ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
 session_start();
 
-// Include database configuration
-require_once 'config.php';
-
-// Get database connection
-$conn = getDBConnection();
-
-// Initialize tables if they don't exist
-initializeTables($conn);
-
-// Only redirect if user is already logged in AND this is not a POST request (i.e., not a login attempt)
-if (isset($_SESSION['user_id']) && $_SERVER['REQUEST_METHOD'] !== 'POST') {
-    switch (strtolower($_SESSION['user_type'])) {
-        case 'admin':
-            header('Location: admin.php');
-            break;
-        case 'employer':
-            header('Location: dashboard.php');
-            break;
-        case 'jobseeker':
-            header('Location: explore.php');
-            break;
-        default:
-            header('Location: explore.php');
+// If user is already logged in, redirect to appropriate page
+if (isset($_SESSION['user_id'])) {
+    if ($_SESSION['user_type'] === 'admin') {
+        header('Location: admin.php');
+    } else if ($_SESSION['user_type'] === 'employer') {
+        header('Location: dashboard.php');
+    } else {
+        header('Location: track_candidate.php');
     }
     exit();
 }
 
+require_once 'config.php';
+$conn = getDBConnection();
+
 $error = '';
 
-// Handle login form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $username = trim($_POST['username'] ?? '');
-    $password = $_POST['password'] ?? '';
+    $username = $conn->real_escape_string($_POST['username']);
+    $password = $_POST['password'];
     
-    if (empty($username) || empty($password)) {
-        $error = 'Please enter both username and password.';
-    } else {
-        // Check user credentials
-        $stmt = $conn->prepare('SELECT id, username, password, user_type FROM users WHERE username = ?');
-        if (!$stmt) {
-            $error = 'Database error: ' . $conn->error;
-        } else {
-            $stmt->bind_param('s', $username);
-            $stmt->execute();
-            $result = $stmt->get_result();
+    // Debug log
+    error_log("Login attempt for username: " . $username);
+    
+    $query = "SELECT id, username, password, user_type FROM users WHERE username = ?";
+    $stmt = $conn->prepare($query);
+    $stmt->bind_param("s", $username);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    
+    if ($result->num_rows === 1) {
+        $user = $result->fetch_assoc();
+        error_log("User found in database. User type: " . $user['user_type']);
+        
+        if (password_verify($password, $user['password'])) {
+            $_SESSION['user_id'] = $user['id'];
+            $_SESSION['username'] = $user['username'];
+            $_SESSION['user_type'] = $user['user_type'];
             
-            if ($result->num_rows === 1) {
-                $user = $result->fetch_assoc();
-                error_log("Login attempt - User found: " . print_r($user, true));
-                
-                if (password_verify($password, $user['password'])) {
-                    // Set session variables (force user_type to lowercase for consistency)
-                    $_SESSION['user_id'] = $user['id'];
-                    $_SESSION['username'] = $user['username'];
-                    $_SESSION['user_type'] = strtolower($user['user_type']);
-                    
-                    error_log("Login successful - Session set: " . print_r($_SESSION, true));
-                    
-                    // Robust redirection logic
-                    if ($_SESSION['user_type'] === 'admin') {
-                        header('Location: admin.php');
-                        exit();
-                    } else if ($_SESSION['user_type'] === 'employer') {
-                        header('Location: dashboard.php');
-                        exit();
-                    } else {
-                        header('Location: explore.php');
-                        exit();
-                    }
-                } else {
-                    $error = 'Invalid password.';
-                    error_log("Login failed - Invalid password for user: " . $username);
-                }
+            error_log("Password verified. Setting session variables.");
+            error_log("Session user type: " . $_SESSION['user_type']);
+            
+            // Redirect based on user type
+            if ($user['user_type'] === 'admin') {
+                header('Location: admin.php');
+            } else if ($user['user_type'] === 'employer') {
+                header('Location: dashboard.php');
             } else {
-                $error = 'User not found.';
-                error_log("Login failed - User not found: " . $username);
+                header('Location: track_candidate.php');
             }
-            $stmt->close();
+            exit();
+        } else {
+            error_log("Password verification failed");
+            $error = 'Invalid username or password';
         }
+    } else {
+        error_log("No user found with username: " . $username);
+        $error = 'Invalid username or password';
     }
+    
+    $stmt->close();
 }
 ?>
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -101,108 +83,106 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             padding: 0;
             min-height: 100vh;
             display: flex;
-            justify-content: center;
+            flex-direction: column;
             align-items: center;
+            justify-content: center;
         }
         .login-container {
             background: #232a34;
             padding: 32px;
             border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
             width: 100%;
             max-width: 400px;
-            box-shadow: 0 4px 24px rgba(0,0,0,0.18);
+            margin: 16px;
         }
-        .login-container h1 {
+        .logo {
             text-align: center;
+            font-size: 2em;
+            font-weight: bold;
             margin-bottom: 24px;
             color: #4fc3f7;
         }
         .form-group {
-            margin-bottom: 20px;
+            margin-bottom: 16px;
         }
-        .form-group label {
+        label {
             display: block;
             margin-bottom: 8px;
-            color: #ccc;
-            font-size: 1.1em;
+            color: #888;
         }
-        .form-group input {
+        input {
             width: 100%;
-            padding: 14px 16px;
-            border: none;
-            border-radius: 8px;
-            background: #fff;
-            color: #222;
-            font-size: 1.1em;
-            box-sizing: border-box;
-            transition: all 0.3s ease;
-        }
-        .form-group input:focus {
-            outline: 2px solid #4fc3f7;
-            box-shadow: 0 0 8px rgba(79, 195, 247, 0.3);
-        }
-        .error {
-            color: #ff5252;
-            background: #fff3f3;
-            padding: 12px 16px;
-            border-radius: 8px;
-            margin-bottom: 20px;
+            padding: 12px;
+            border: 1px solid #444;
+            border-radius: 6px;
+            background: #1a1f28;
+            color: #fff;
             font-size: 1em;
+            box-sizing: border-box;
         }
-        .login-button {
+        input:focus {
+            outline: none;
+            border-color: #4fc3f7;
+        }
+        button {
             width: 100%;
-            padding: 14px;
+            padding: 12px;
             background: #4fc3f7;
             color: #222;
             border: none;
-            border-radius: 8px;
-            font-size: 1.2em;
+            border-radius: 6px;
+            font-size: 1em;
             font-weight: bold;
             cursor: pointer;
-            transition: all 0.3s ease;
-            margin-top: 8px;
+            transition: background 0.2s;
         }
-        .login-button:hover {
-            background: #0288d1;
-            color: #fff;
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        button:hover {
+            background: #81d4fa;
+        }
+        .error {
+            color: #f44336;
+            margin-bottom: 16px;
+            text-align: center;
         }
         .signup-link {
             text-align: center;
-            margin-top: 24px;
-            color: #ccc;
-            font-size: 1.1em;
+            margin-top: 16px;
+            color: #888;
         }
         .signup-link a {
             color: #4fc3f7;
             text-decoration: none;
-            font-weight: 500;
-            transition: color 0.3s ease;
         }
         .signup-link a:hover {
-            color: #0288d1;
             text-decoration: underline;
         }
     </style>
 </head>
 <body>
     <div class="login-container">
-        <h1>Login to JPOST</h1>
+        <div class="logo">
+            <span style="font-size:1.2em; margin-right:4px;">&#128188;</span> JPOST
+        </div>
+        
         <?php if ($error): ?>
             <div class="error"><?php echo htmlspecialchars($error); ?></div>
         <?php endif; ?>
+        
         <form method="POST" action="login.php">
             <div class="form-group">
                 <label for="username">Username</label>
                 <input type="text" id="username" name="username" required>
             </div>
+            
             <div class="form-group">
                 <label for="password">Password</label>
                 <input type="password" id="password" name="password" required>
             </div>
-            <button type="submit" class="login-button">Login</button>
+            
+            <button type="submit">Login</button>
         </form>
+        
         <div class="signup-link">
             Don't have an account? <a href="signup.php">Sign up</a>
         </div>

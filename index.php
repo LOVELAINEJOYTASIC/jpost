@@ -11,6 +11,28 @@ $conn = getDBConnection();
 // Initialize tables
 initializeTables($conn);
 
+// Add search functionality
+$search_query = '';
+if (isset($_GET['search']) && !empty($_GET['search'])) {
+    $search_query = htmlspecialchars($_GET['search']);
+}
+
+// Add advanced search parameters
+$job_type = isset($_GET['job_type']) ? $conn->real_escape_string($_GET['job_type']) : '';
+$location = isset($_GET['location']) ? $conn->real_escape_string($_GET['location']) : '';
+
+// Get job count for search results
+$jobs_count = 0;
+if (!empty($search_query)) {
+    $search = $conn->real_escape_string($search_query);
+    $count_query = "SELECT COUNT(*) as count FROM jobs WHERE job LIKE '%$search%' OR company LIKE '%$search%' OR requirements LIKE '%$search%' OR salary LIKE '%$search%'";
+    $result = $conn->query($count_query);
+    if ($result) {
+        $row = $result->fetch_assoc();
+        $jobs_count = $row['count'];
+    }
+}
+
 // Remove any redirection logic that might interfere with login page access
 ?>
 <!DOCTYPE html>
@@ -328,11 +350,15 @@ initializeTables($conn);
                 <?php endif; ?>
             <?php endif; ?>
         </nav>
-        <div style="display:flex; align-items:center;">
+        <div style="display:flex; align-items:center; gap: 16px;">
+            <form action="explore.php" method="GET" class="search" style="display:flex; align-items:center;">
+                <input type="text" name="search" placeholder="Search jobs..." value="<?php echo $search_query; ?>" style="padding: 8px 12px; border-radius: 4px; border: 1px solid #333; background: #222; color: #fff;">
+                <button type="submit" style="background: none; border: none; color: #fff; cursor: pointer; font-size: 1.2em; padding: 8px;">&#128269;</button>
+            </form>
             <?php if (isset($_SESSION['user_id'])): ?>
-                <a href="logout.php" style="color:#fff; text-decoration:none; margin-right:18px; background:#f44336; padding:8px 16px; border-radius:4px;">Logout</a>
+                <a href="logout.php" style="color:#fff; text-decoration:none; background:#f44336; padding:8px 16px; border-radius:4px;">Logout</a>
             <?php else: ?>
-                <a href="login.php" style="color:#fff; text-decoration:none; margin-right:18px;">Login</a>
+                <a href="login.php" style="color:#fff; text-decoration:none;">Login</a>
                 <a href="signup.php" style="background:#4fc3f7; color:#222; padding:8px 16px; border-radius:16px; text-decoration:none; font-weight:bold;">Sign Up</a>
             <?php endif; ?>
         </div>
@@ -340,7 +366,6 @@ initializeTables($conn);
 
     <div class="hero">
         <h1>Find Your Dream Job</h1>
-        <p>Connect with top employers and discover opportunities that match your skills and aspirations.</p>
         <div class="cta-buttons">
             <a href="signup.php" class="cta-button primary-button">Get Started</a>
             <a href="explore.php" class="cta-button secondary-button">Browse Jobs</a>
@@ -366,7 +391,7 @@ initializeTables($conn);
         </div>
         <div class="right">
             <div class="banner-img">
-                <img src="uploads/professional_woman.jpg" alt="Professional Woman" />
+                <img src="https://i.pinimg.com/736x/96/52/19/96521986718d625fb0889668ffaf1a61.jpg" alt="Professional Woman" />
             </div>
         </div>
     </div>
@@ -398,13 +423,14 @@ initializeTables($conn);
     };
     </script>
 
-    <!-- Optionally, show a message if logged in -->
     <?php if (isset($_SESSION['user_id'])): ?>
-        <div style="background:#222;color:#4fc3f7;text-align:center;padding:8px;">You are logged in as <b><?php echo htmlspecialchars($_SESSION['username']); ?></b> (<?php echo htmlspecialchars($_SESSION['user_type']); ?>).</div>
+        <div style="background:#222;color:#4fc3f7;text-align:center;padding:8px;">You are logged in as <b><?php echo htmlspecialchars($_SESSION['username']); ?></b><?php echo isset($_SESSION['user_type']) ? ' (' . htmlspecialchars($_SESSION['user_type']) . ')' : ''; ?>.</div>
     <?php endif; ?>
 
     <?php
-    error_log('user_type in session: ' . $_SESSION['user_type']);
+    if (isset($_SESSION['user_type'])) {
+        error_log('user_type in session: ' . $_SESSION['user_type']);
+    }
     ?>
 </body>
 </html> 

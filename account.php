@@ -81,13 +81,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $ext = strtolower(pathinfo($_FILES['avatar']['name'], PATHINFO_EXTENSION));
         $allowed = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
         if (in_array($ext, $allowed)) {
-            // Check file size (max 5MB)
             if ($_FILES['avatar']['size'] <= 5 * 1024 * 1024) {
                 $filename = 'avatar_' . $user_id . '_' . time() . '.' . $ext;
-            $target = "$uploads_dir/$filename";
+                $target = "$uploads_dir/$filename";
                 if (move_uploaded_file($tmp_name, $target)) {
                     $avatar_path = $target;
-                    // Delete old avatar if exists
                     if (isset($profile['avatar']) && $profile['avatar'] && file_exists($profile['avatar'])) {
                         unlink($profile['avatar']);
                     }
@@ -103,92 +101,48 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
     
     if (empty($errors)) {
-        // Check if profile exists
-        $check_sql = "SELECT id FROM user_profiles WHERE user_id = ?";
-        $check_stmt = $conn->prepare($check_sql);
-        $check_stmt->bind_param("i", $user_id);
-        $check_stmt->execute();
-        $result = $check_stmt->get_result();
+        // Update profile
+        $sql = "UPDATE user_profiles SET 
+                full_name = ?, 
+                birthday = ?, 
+                address = ?, 
+                contact = ?, 
+                application = ?, 
+                status = ?";
         
-        if ($result->num_rows > 0) {
-            // Update existing profile
-            $profile = $result->fetch_assoc();
-            $sql = "UPDATE user_profiles SET 
-                    full_name = ?, 
-                    birthday = ?, 
-                    address = ?, 
-                    contact = ?, 
-                    application = ?, 
-                    status = ?";
-            
-            $params = [$full_name, $birthday, $address, $contact, $application, $status];
-            $types = "ssssss";
-            
-            if ($avatar_path) {
-                $sql .= ", avatar = ?";
-                $params[] = $avatar_path;
-                $types .= "s";
-            }
-            
-            $sql .= " WHERE user_id = ?";
-            $params[] = $user_id;
-            $types .= "i";
-            
-            $stmt = $conn->prepare($sql);
-            
-            // Create references for bind_param
-            $bind_params = array();
-            $bind_params[] = &$types;
-            for($i = 0; $i < count($params); $i++) {
-                $bind_params[] = &$params[$i];
-            }
-            
-            call_user_func_array(array($stmt, 'bind_param'), $bind_params);
-            
-            if ($stmt->execute()) {
-                $success_message = "Profile updated successfully!";
-                // Update session data
-                $_SESSION['user_name'] = $full_name;
-                $_SESSION['user_status'] = $status;
-            } else {
-                $error_message = "Error updating profile: " . $stmt->error;
-            }
-            $stmt->close();
-        } else {
-            // Insert new profile
-            $sql = "INSERT INTO user_profiles (user_id, full_name, birthday, address, contact, application, status, avatar) 
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
-            $stmt = $conn->prepare($sql);
-            
-            // Create references for bind_param
-            $avatar_default = $avatar_path ?: 'https://cdn-icons-png.flaticon.com/512/3135/3135715.png';
-            $bind_params = array(
-                &$user_id,
-                &$full_name,
-                &$birthday,
-                &$address,
-                &$contact,
-                &$application,
-                &$status,
-                &$avatar_default
-            );
-            
-            $types = "isssssss";
-            array_unshift($bind_params, $types);
-            
-            call_user_func_array(array($stmt, 'bind_param'), $bind_params);
-            
-            if ($stmt->execute()) {
-                $success_message = "Profile created successfully!";
-                // Update session data
-                $_SESSION['user_name'] = $full_name;
-                $_SESSION['user_status'] = $status;
-            } else {
-                $error_message = "Error creating profile: " . $stmt->error;
-            }
-            $stmt->close();
+        $params = [$full_name, $birthday, $address, $contact, $application, $status];
+        $types = "ssssss";
+        
+        if ($avatar_path) {
+            $sql .= ", avatar = ?";
+            $params[] = $avatar_path;
+            $types .= "s";
         }
-        $check_stmt->close();
+        
+        $sql .= " WHERE user_id = ?";
+        $params[] = $user_id;
+        $types .= "i";
+        
+        $stmt = $conn->prepare($sql);
+        
+        // Create references for bind_param
+        $bind_params = array();
+        $bind_params[] = &$types;
+        for($i = 0; $i < count($params); $i++) {
+            $bind_params[] = &$params[$i];
+        }
+        
+        call_user_func_array(array($stmt, 'bind_param'), $bind_params);
+        
+        if ($stmt->execute()) {
+            $success_message = "Profile updated successfully!";
+            // Update session data
+            $_SESSION['user_name'] = $full_name;
+            $_SESSION['user_status'] = $status;
+        } else {
+            $error_message = "Error updating profile: " . $stmt->error;
+        }
+        $stmt->close();
     } else {
         $error_message = implode("<br>", $errors);
     }
@@ -476,16 +430,15 @@ $stmt->close();
                 <div class="message error-message"><?php echo htmlspecialchars($error_message); ?></div>
             <?php endif; ?>
             <div class="account-info">
-                <h2>Account Information</h2>
+                <h2>Profile Management</h2>
                 <ul style="list-style:none; padding:0; margin:0 0 12px 0;">
                     <li>*Full Name: <input type="text" name="full_name" value="<?php echo htmlspecialchars($full_name); ?>" required style="width:90%;padding:4px 8px;margin:4px 0;border-radius:8px;border:none;"></li>
                     <li>*Birthday: <input type="date" name="birthday" value="<?php echo htmlspecialchars($birthday); ?>" required style="width:90%;padding:4px 8px;margin:4px 0;border-radius:8px;border:none;"></li>
                     <li>*Address: <input type="text" name="address" value="<?php echo htmlspecialchars($address); ?>" required style="width:90%;padding:4px 8px;margin:4px 0;border-radius:8px;border:none;"></li>
                     <li>*Contacts/Email Address: <input type="text" name="contact" value="<?php echo htmlspecialchars($contact); ?>" required style="width:90%;padding:4px 8px;margin:4px 0;border-radius:8px;border:none;"></li>
                     <li>*Application Letter (skills/position): <textarea name="application" required style="width:90%;padding:4px 8px;margin:4px 0;border-radius:8px;border:none;resize:vertical;"><?php echo htmlspecialchars($application); ?></textarea></li>
-                    <li>View: <a href="#" class="resume-link">Resume docs</a></li>
                 </ul>
-                <button type="submit" style="margin-top:10px;padding:8px 24px;border-radius:8px;background:#4fc3f7;color:#222;font-weight:bold;border:none;cursor:pointer;">Save</button>
+                <button type="submit" style="margin-top:10px;padding:8px 24px;border-radius:8px;background:#4fc3f7;color:#222;font-weight:bold;border:none;cursor:pointer;">Update Profile</button>
             </div>
             <div class="account-avatar">
                 <label for="avatar" style="cursor:pointer;display:block;">
