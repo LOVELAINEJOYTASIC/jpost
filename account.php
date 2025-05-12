@@ -31,6 +31,7 @@ $conn->query("CREATE TABLE IF NOT EXISTS user_profiles (
     contact VARCHAR(255),
     application TEXT,
     avatar VARCHAR(255),
+    resume VARCHAR(255),
     status ENUM('Active', 'Offline') DEFAULT 'Active',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -72,6 +73,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     
     // Handle file upload
     $avatar_path = '';
+    $resume_path = '';
     if (isset($_FILES['avatar']) && $_FILES['avatar']['error'] === UPLOAD_ERR_OK) {
         $uploads_dir = 'uploads';
         if (!is_dir($uploads_dir)) {
@@ -100,6 +102,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
     
+    // Handle resume upload
+    if (isset($_FILES['resume']) && $_FILES['resume']['error'] === UPLOAD_ERR_OK) {
+        $uploads_dir = 'uploads';
+        if (!is_dir($uploads_dir)) {
+            mkdir($uploads_dir, 0777, true);
+        }
+        $tmp_name = $_FILES['resume']['tmp_name'];
+        $ext = strtolower(pathinfo($_FILES['resume']['name'], PATHINFO_EXTENSION));
+        $allowed = ['pdf', 'doc', 'docx'];
+        if (in_array($ext, $allowed)) {
+            if ($_FILES['resume']['size'] <= 10 * 1024 * 1024) { // 10MB max
+                $filename = 'resume_' . $user_id . '_' . time() . '.' . $ext;
+                $target = "$uploads_dir/$filename";
+                if (move_uploaded_file($tmp_name, $target)) {
+                    $resume_path = $target;
+                    if (isset($profile['resume']) && $profile['resume'] && file_exists($profile['resume'])) {
+                        unlink($profile['resume']);
+                    }
+                } else {
+                    $errors[] = "Failed to upload resume";
+                }
+            } else {
+                $errors[] = "Resume size should be less than 10MB";
+            }
+        } else {
+            $errors[] = "Invalid resume format. Allowed: pdf, doc, docx";
+        }
+    }
+    
     if (empty($errors)) {
         // Update profile
         $sql = "UPDATE user_profiles SET 
@@ -116,6 +147,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($avatar_path) {
             $sql .= ", avatar = ?";
             $params[] = $avatar_path;
+            $types .= "s";
+        }
+        
+        if ($resume_path) {
+            $sql .= ", resume = ?";
+            $params[] = $resume_path;
             $types .= "s";
         }
         
@@ -176,6 +213,7 @@ $contact = $profile['contact'] ?? '';
 $application = $profile['application'] ?? '';
 $avatar = $profile['avatar'] ?? 'https://cdn-icons-png.flaticon.com/512/3135/3135715.png';
 $status = $profile['status'] ?? 'Active';
+$resume = $profile['resume'] ?? '';
 
 $stmt->close();
 ?>
@@ -437,6 +475,13 @@ $stmt->close();
                     <li>*Address: <input type="text" name="address" value="<?php echo htmlspecialchars($address); ?>" required style="width:90%;padding:4px 8px;margin:4px 0;border-radius:8px;border:none;"></li>
                     <li>*Contacts/Email Address: <input type="text" name="contact" value="<?php echo htmlspecialchars($contact); ?>" required style="width:90%;padding:4px 8px;margin:4px 0;border-radius:8px;border:none;"></li>
                     <li>*Application Letter (skills/position): <textarea name="application" required style="width:90%;padding:4px 8px;margin:4px 0;border-radius:8px;border:none;resize:vertical;"><?php echo htmlspecialchars($application); ?></textarea></li>
+                    <li>*Resume (PDF, DOC, DOCX): 
+                        <?php if ($resume): ?>
+                            <a href="<?php echo htmlspecialchars($resume); ?>" target="_blank" class="resume-link">View/Download Resume</a><br>
+                        <?php endif; ?>
+                        <input type="file" name="resume" accept=".pdf,.doc,.docx" style="margin-top:4px;">
+                        <button type="submit" name="save_resume" value="1" style="margin-left:8px;padding:4px 16px;border-radius:8px;background:#4fc3f7;color:#222;font-weight:bold;border:none;cursor:pointer;">Save Resume</button>
+                    </li>
                 </ul>
                 <button type="submit" style="margin-top:10px;padding:8px 24px;border-radius:8px;background:#4fc3f7;color:#222;font-weight:bold;border:none;cursor:pointer;">Update Profile</button>
             </div>
