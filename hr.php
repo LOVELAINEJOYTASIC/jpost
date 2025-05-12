@@ -46,18 +46,55 @@ if (!$user || !in_array(strtolower($user['user_type']), ['admin', 'hr'])) {
 error_log("Access granted - User is admin/hr");
 $check_user->close();
 
+// Add delete functionality
+if (isset($_POST['delete_applicant'])) {
+    $applicant_id = (int)$_POST['delete_applicant'];
+    $delete_sql = "DELETE FROM applicants WHERE id = ?";
+    $delete_stmt = $conn->prepare($delete_sql);
+    $delete_stmt->bind_param("i", $applicant_id);
+    if ($delete_stmt->execute()) {
+        header('Location: hr.php?success=deleted');
+        exit();
+    }
+    $delete_stmt->close();
+}
+
+// Add edit functionality
+if (isset($_POST['edit_applicant'])) {
+    $applicant_id = (int)$_POST['edit_applicant'];
+    $status = $conn->real_escape_string($_POST['status']);
+    $update_sql = "UPDATE applicants SET status1 = ? WHERE id = ?";
+    $update_stmt = $conn->prepare($update_sql);
+    $update_stmt->bind_param("si", $status, $applicant_id);
+    if ($update_stmt->execute()) {
+        header('Location: hr.php?success=updated');
+        exit();
+    }
+    $update_stmt->close();
+}
+
+// Create user_id column in applicants table if it doesn't exist
+$check_column = $conn->query("SHOW COLUMNS FROM applicants LIKE 'user_id'");
+if ($check_column->num_rows == 0) {
+    $conn->query("ALTER TABLE applicants ADD COLUMN user_id INT, ADD FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL");
+}
+
 // Fetch applicants from database with search functionality
 $search = isset($_GET['search']) ? $conn->real_escape_string($_GET['search']) : '';
 $status_filter = isset($_GET['status']) ? $conn->real_escape_string($_GET['status']) : '';
 
-$sql = "SELECT id, name, email, phone, status1, status2, status3, created_at FROM applicants WHERE 1=1";
+$sql = "SELECT a.*, up.full_name, up.birthday, up.address, up.contact, up.application 
+        FROM applicants a 
+        LEFT JOIN user_profiles up ON a.user_id = up.user_id 
+        WHERE 1=1";
+
 if (!empty($search)) {
-    $sql .= " AND (name LIKE '%$search%' OR email LIKE '%$search%' OR phone LIKE '%$search%')";
+    $sql .= " AND (a.name LIKE '%$search%' OR a.email LIKE '%$search%' OR a.phone LIKE '%$search%' OR up.full_name LIKE '%$search%')";
 }
 if (!empty($status_filter)) {
-    $sql .= " AND status1 = '$status_filter'";
+    $sql .= " AND a.status1 = '$status_filter'";
 }
-$sql .= " ORDER BY created_at DESC";
+$sql .= " ORDER BY a.created_at DESC";
 
 $result = $conn->query($sql);
 $applicants = [];
@@ -66,6 +103,35 @@ if ($result && $result->num_rows > 0) {
         $applicants[] = $row;
     }
 }
+
+// Function to link applicants with user profiles
+function linkApplicantsWithUsers($conn) {
+    // Get all applicants without user_id
+    $sql = "SELECT a.id, a.name FROM applicants a WHERE a.user_id IS NULL";
+    $result = $conn->query($sql);
+    
+    if ($result && $result->num_rows > 0) {
+        while ($applicant = $result->fetch_assoc()) {
+            // Find matching user by name
+            $name = $conn->real_escape_string($applicant['name']);
+            $user_sql = "SELECT id FROM users WHERE username = '$name'";
+            $user_result = $conn->query($user_sql);
+            
+            if ($user_result && $user_result->num_rows > 0) {
+                $user = $user_result->fetch_assoc();
+                // Update applicant with user_id
+                $update_sql = "UPDATE applicants SET user_id = ? WHERE id = ?";
+                $stmt = $conn->prepare($update_sql);
+                $stmt->bind_param("ii", $user['id'], $applicant['id']);
+                $stmt->execute();
+                $stmt->close();
+            }
+        }
+    }
+}
+
+// Call the function to link applicants
+linkApplicantsWithUsers($conn);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -75,7 +141,7 @@ if ($result && $result->num_rows > 0) {
     <title>HR Dashboard - JPOST</title>
     <style>
         body {
-            background: #101014;
+            background: linear-gradient(135deg, #181818 60%, #232a34 100%);
             color: #fff;
             font-family: 'Segoe UI', Arial, sans-serif;
             margin: 0;
@@ -87,9 +153,10 @@ if ($result && $result->num_rows > 0) {
             align-items: center;
             justify-content: space-between;
             padding: 0 32px;
-            background: #101014;
-            border-bottom: 2px solid #222;
+            background: #181818cc;
+            border-bottom: 2px solid #333;
             height: 60px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
         }
         .navbar .logo {
             display: flex;
@@ -116,19 +183,29 @@ if ($result && $result->num_rows > 0) {
         .navbar .search {
             display: flex;
             align-items: center;
-            background: #f7f7d0;
-            border-radius: 20px;
-            padding: 4px 12px;
+            background: #fff;
+            border-radius: 24px;
+            padding: 4px 16px;
             margin-left: 24px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            transition: all 0.3s ease;
+        }
+        .navbar .search:hover {
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            transform: translateY(-1px);
         }
         .navbar .search input {
             background: transparent;
             border: none;
             color: #222;
             outline: none;
-            padding: 6px 8px;
+            padding: 8px;
             font-size: 1em;
-            width: 180px;
+            width: 240px;
+            transition: width 0.3s ease;
+        }
+        .navbar .search input:focus {
+            width: 280px;
         }
         .navbar .search button {
             background: none;
@@ -136,6 +213,11 @@ if ($result && $result->num_rows > 0) {
             color: #222;
             cursor: pointer;
             font-size: 1.2em;
+            padding: 4px 8px;
+            transition: transform 0.2s ease;
+        }
+        .navbar .search button:hover {
+            transform: scale(1.1);
         }
         .navbar .settings {
             margin-left: 18px;
@@ -155,11 +237,11 @@ if ($result && $result->num_rows > 0) {
         .applicants-card {
             background: #fff;
             color: #222;
-            border-radius: 10px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.10);
-            padding: 32px 32px 24px 32px;
+            border-radius: 16px;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+            padding: 32px;
             min-width: 400px;
-            max-width: 800px;
+            max-width: 1200px;
             flex-grow: 1;
         }
         .applicants-card h2 {
@@ -170,32 +252,131 @@ if ($result && $result->num_rows > 0) {
         }
         .applicants-table {
             width: 100%;
-            border-collapse: collapse;
+            border-collapse: separate;
+            border-spacing: 0;
+            margin-top: 24px;
         }
         .applicants-table th, .applicants-table td {
-            padding: 12px;
+            padding: 16px;
             text-align: left;
             border-bottom: 1px solid #eee;
         }
         .applicants-table th {
-            color: #222;
-            font-weight: 600;
             background: #f7f7f7;
+            font-weight: 600;
+            color: #222;
         }
-        .badge {
-            display: inline-block;
-            padding: 4px 12px;
-            border-radius: 12px;
+        .applicants-table tr:hover {
+            background: #f9f9f9;
+        }
+        .action-buttons {
+            display: flex;
+            gap: 8px;
+        }
+        .edit-btn, .delete-btn {
+            padding: 6px 12px;
+            border-radius: 6px;
+            border: none;
+            cursor: pointer;
             font-size: 0.9em;
-            font-weight: 500;
+            transition: all 0.2s;
         }
-        .badge.inreview { background: #ffe082; color: #222; }
-        .badge.inprocess { background: #80deea; color: #222; }
-        .badge.interview { background: #4fc3f7; color: #222; }
-        .badge.ondemand { background: #ffd54f; color: #222; }
-        .badge.accepted { background: #a5d6a7; color: #222; }
-        .badge.cancelled { background: #ef9a9a; color: #222; }
-        .badge.inwaiting { background: #ff8a65; color: #fff; }
+        .edit-btn {
+            background: #4fc3f7;
+            color: #fff;
+        }
+        .delete-btn {
+            background: #f44336;
+            color: #fff;
+        }
+        .edit-btn:hover, .delete-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+        }
+        .modal-content {
+            background: #fff;
+            color: #222;
+            width: 90%;
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 24px;
+            border-radius: 16px;
+            box-shadow: 0 4px 24px rgba(0,0,0,0.2);
+        }
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+        }
+        .modal-header h2 {
+            margin: 0;
+            color: #222;
+        }
+        .close-modal {
+            background: none;
+            border: none;
+            font-size: 1.5em;
+            cursor: pointer;
+            color: #666;
+        }
+        .modal-body {
+            margin-bottom: 24px;
+        }
+        .form-group {
+            margin-bottom: 16px;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #444;
+        }
+        .form-group select {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 1em;
+        }
+        .modal-footer {
+            text-align: right;
+        }
+        .save-btn {
+            background: #4fc3f7;
+            color: #fff;
+            border: none;
+            padding: 8px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 1em;
+        }
+        .save-btn:hover {
+            background: #0288d1;
+        }
+        .success-message {
+            background: #4caf50;
+            color: #fff;
+            padding: 12px;
+            border-radius: 6px;
+            margin-bottom: 24px;
+        }
+        .error-message {
+            background: #f44336;
+            color: #fff;
+            padding: 12px;
+            border-radius: 6px;
+            margin-bottom: 24px;
+        }
         .sidebar {
             display: flex;
             flex-direction: column;
@@ -262,7 +443,7 @@ if ($result && $result->num_rows > 0) {
             <a href="account.php">Account</a>
         </nav>
         <div style="display:flex; align-items:center;">
-            <form class="search" style="margin:0;" action="hr.php" method="GET">
+            <form class="search" action="hr.php" method="GET">
                 <input type="text" name="search" placeholder="Search applicants..." value="<?php echo htmlspecialchars($search); ?>">
                 <button type="submit">&#128269;</button>
             </form>
@@ -272,6 +453,15 @@ if ($result && $result->num_rows > 0) {
     <div class="main-content">
         <div class="applicants-card">
             <h2>Applicants</h2>
+            <?php if (isset($_GET['success'])): ?>
+                <div class="success-message">
+                    <?php 
+                    if ($_GET['success'] === 'updated') echo 'Applicant status updated successfully!';
+                    if ($_GET['success'] === 'deleted') echo 'Applicant deleted successfully!';
+                    ?>
+                </div>
+            <?php endif; ?>
+            
             <div class="filters">
                 <form action="hr.php" method="GET" style="display:flex; gap:16px;">
                     <select name="status" onchange="this.form.submit()">
@@ -289,6 +479,7 @@ if ($result && $result->num_rows > 0) {
                     <?php endif; ?>
                 </form>
             </div>
+
             <table class="applicants-table">
                 <tr>
                     <th>Name</th>
@@ -296,13 +487,19 @@ if ($result && $result->num_rows > 0) {
                     <th>Phone</th>
                     <th>Status</th>
                     <th>Applied</th>
+                    <th>Actions</th>
                 </tr>
                 <?php if (empty($applicants)): ?>
-                    <tr><td colspan="5" style="text-align:center;">No applicants found.</td></tr>
+                    <tr><td colspan="6" style="text-align:center;">No applicants found.</td></tr>
                 <?php else: ?>
                     <?php foreach ($applicants as $app): ?>
                         <tr>
-                            <td><?php echo htmlspecialchars($app['name']); ?></td>
+                            <td>
+                                <?php echo htmlspecialchars($app['name']); ?>
+                                <?php if (!empty($app['full_name'])): ?>
+                                    <br><small style="color:#666;"><?php echo htmlspecialchars($app['full_name']); ?></small>
+                                <?php endif; ?>
+                            </td>
                             <td><?php echo htmlspecialchars($app['email']); ?></td>
                             <td><?php echo htmlspecialchars($app['phone']); ?></td>
                             <td>
@@ -311,6 +508,15 @@ if ($result && $result->num_rows > 0) {
                                 </span>
                             </td>
                             <td><?php echo date('M d, Y', strtotime($app['created_at'])); ?></td>
+                            <td>
+                                <div class="action-buttons">
+                                    <button class="edit-btn" onclick="openEditModal(<?php echo $app['id']; ?>, '<?php echo htmlspecialchars($app['status1']); ?>')">Edit</button>
+                                    <form method="POST" style="display:inline;" onsubmit="return confirm('Are you sure you want to delete this applicant?');">
+                                        <input type="hidden" name="delete_applicant" value="<?php echo $app['id']; ?>">
+                                        <button type="submit" class="delete-btn">Delete</button>
+                                    </form>
+                                </div>
+                            </td>
                         </tr>
                     <?php endforeach; ?>
                 <?php endif; ?>
@@ -323,5 +529,54 @@ if ($result && $result->num_rows > 0) {
             <a class="sidebar-btn" href="reports.php">Reports</a>
         </div>
     </div>
+
+    <!-- Edit Modal -->
+    <div id="editModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Edit Applicant Status</h2>
+                <button class="close-modal" onclick="closeEditModal()">&times;</button>
+            </div>
+            <form method="POST">
+                <div class="modal-body">
+                    <input type="hidden" name="edit_applicant" id="edit_applicant_id">
+                    <div class="form-group">
+                        <label for="status">Status:</label>
+                        <select name="status" id="status" required>
+                            <option value="In Review">In Review</option>
+                            <option value="In Process">In Process</option>
+                            <option value="Interview">Interview</option>
+                            <option value="On Demand">On Demand</option>
+                            <option value="Accepted">Accepted</option>
+                            <option value="Cancelled">Cancelled</option>
+                            <option value="In Waiting">In Waiting</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="submit" class="save-btn">Save Changes</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+    function openEditModal(id, currentStatus) {
+        document.getElementById('editModal').style.display = 'block';
+        document.getElementById('edit_applicant_id').value = id;
+        document.getElementById('status').value = currentStatus;
+    }
+
+    function closeEditModal() {
+        document.getElementById('editModal').style.display = 'none';
+    }
+
+    // Close modal when clicking outside
+    window.onclick = function(event) {
+        if (event.target == document.getElementById('editModal')) {
+            closeEditModal();
+        }
+    }
+    </script>
 </body>
 </html> 

@@ -36,6 +36,12 @@ $conn->query("CREATE TABLE IF NOT EXISTS jobs (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 )");
 
+// Check if address column exists, if not add it
+$check_column = $conn->query("SHOW COLUMNS FROM jobs LIKE 'address'");
+if ($check_column->num_rows == 0) {
+    $conn->query("ALTER TABLE jobs ADD COLUMN address VARCHAR(255) NOT NULL AFTER salary");
+}
+
 $conn->query("CREATE TABLE IF NOT EXISTS users (
     id INT AUTO_INCREMENT PRIMARY KEY,
     username VARCHAR(100) NOT NULL UNIQUE,
@@ -114,25 +120,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_id']) && $_POST[
     $job = $conn->real_escape_string($_POST['job']);
     $requirements = $conn->real_escape_string($_POST['requirements']);
     $salary = $conn->real_escape_string($_POST['salary']);
-    $conn->query("UPDATE jobs SET company='$company', job='$job', requirements='$requirements', salary='$salary' WHERE id=$id");
-    header('Location: dashboard.php');
-    exit();
+    $address = $conn->real_escape_string($_POST['address']);
+    
+    $sql = "UPDATE jobs SET company=?, job=?, requirements=?, salary=?, address=? WHERE id=?";
+    $stmt = $conn->prepare($sql);
+    $stmt->bind_param("sssssi", $company, $job, $requirements, $salary, $address, $id);
+    
+    if ($stmt->execute()) {
+        header('Location: dashboard.php?success=2');
+        exit();
+    } else {
+        header('Location: dashboard.php?error=2');
+        exit();
+    }
+    $stmt->close();
 }
 
 // Handle new job post
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && (!isset($_POST['edit_id']) || $_POST['edit_id'] === '')) {
-    if (isset($_POST['company'], $_POST['job'], $_POST['requirements'], $_POST['salary'])) {
+    if (isset($_POST['company'], $_POST['job'], $_POST['requirements'], $_POST['salary'], $_POST['address'])) {
         $company = $conn->real_escape_string($_POST['company']);
         $job = $conn->real_escape_string($_POST['job']);
         $requirements = $conn->real_escape_string($_POST['requirements']);
         $salary = $conn->real_escape_string($_POST['salary']);
-        $sql = "INSERT INTO jobs (company, job, requirements, salary) VALUES ('$company', '$job', '$requirements', '$salary')";
-        if ($conn->query($sql)) {
+        $address = $conn->real_escape_string($_POST['address']);
+        
+        $sql = "INSERT INTO jobs (company, job, requirements, salary, address) VALUES (?, ?, ?, ?, ?)";
+        $stmt = $conn->prepare($sql);
+        $stmt->bind_param("sssss", $company, $job, $requirements, $salary, $address);
+        
+        if ($stmt->execute()) {
             header('Location: dashboard.php?success=1');
             exit();
         } else {
-            die('Error posting job: ' . $conn->error);
+            header('Location: dashboard.php?error=1');
+            exit();
         }
+        $stmt->close();
     }
 }
 
@@ -721,7 +745,7 @@ echo '<div style="color:yellow;background:#222;padding:8px;">Jobs found: ' . ($j
         <div class="dashboard-actions">
             <button class="candidate-list" onclick="showApplications()">Candidate List</button>
             <button class="resume">Resume</button>
-            <button class="interview">Interview</button>
+            <button class="interview" onclick="showInterviews()">Interview</button>
             <button class="recruit">Recruit</button>
         </div>
     </div>
@@ -864,10 +888,11 @@ echo '<div style="color:yellow;background:#222;padding:8px;">Jobs found: ' . ($j
                     <div><b>Company:</b> <?php echo htmlspecialchars($row['company']); ?></div>
                     <div><b>Requirements:</b> <?php echo nl2br(htmlspecialchars($row['requirements'])); ?></div>
                     <div><b>Salary:</b> <?php echo htmlspecialchars($row['salary']); ?></div>
+                    <div><b>Address:</b> <?php echo htmlspecialchars($row['address']); ?></div>
                     <div style="font-size:0.9em;color:#888;margin-top:8px;">Posted: <?php echo htmlspecialchars($row['created_at']); ?></div>
                     <div style="margin-top:12px;display:flex;gap:8px;">
                         <button class="edit-btn" style="background:#4fc3f7;color:#222;border:none;padding:6px 14px;border-radius:6px;cursor:pointer;font-weight:bold;" 
-                            onclick="openEditModal(<?php echo $row['id']; ?>, '<?php echo htmlspecialchars(addslashes($row['company'])); ?>', '<?php echo htmlspecialchars(addslashes($row['job'])); ?>', '<?php echo htmlspecialchars(addslashes($row['requirements'])); ?>', '<?php echo htmlspecialchars(addslashes($row['salary'])); ?>'); return false;">Edit</button>
+                            onclick="openEditModal(<?php echo $row['id']; ?>, '<?php echo htmlspecialchars(addslashes($row['company'])); ?>', '<?php echo htmlspecialchars(addslashes($row['job'])); ?>', '<?php echo htmlspecialchars(addslashes($row['requirements'])); ?>', '<?php echo htmlspecialchars(addslashes($row['salary'])); ?>', '<?php echo htmlspecialchars(addslashes($row['address'])); ?>'); return false;">Edit</button>
                         <a href="?delete=<?php echo $row['id']; ?>" onclick="return confirm('Delete this job post?');" style="background:#f44336;color:#fff;border:none;padding:7px 14px;border-radius:6px;cursor:pointer;font-weight:bold;text-decoration:none;">Delete</a>
                     </div>
                 </div>
@@ -910,6 +935,8 @@ echo '<div style="color:yellow;background:#222;padding:8px;">Jobs found: ' . ($j
                 <textarea id="requirements" name="requirements" rows="2" required></textarea>
                 <label for="salary">Salary</label>
                 <input type="text" id="salary" name="salary" required>
+                <label for="address">Address</label>
+                <input type="text" id="address" name="address" required>
                 <button type="submit">Save</button>
             </form>
         </div>
@@ -1035,70 +1062,193 @@ echo '<div style="color:yellow;background:#222;padding:8px;">Jobs found: ' . ($j
             </form>
         </div>
     </div>
+    <!-- Interview List -->
+    <div id="interviewList" style="width:95%;max-width:1000px;margin:32px auto 0 auto;display:none;">
+        <h2 style="color:#4fc3f7;text-align:left;margin-bottom:12px;">Interview Status</h2>
+        <?php
+        // Query to get all interviews with application and job details
+        $interviews_sql = "SELECT is.*, ja.id as application_id, ja.status as application_status, 
+                          j.job, j.company, u.username, u.email
+                          FROM interview_status is
+                          JOIN job_applications ja ON is.application_id = ja.id
+                          JOIN jobs j ON ja.job_id = j.id
+                          JOIN users u ON ja.user_id = u.id
+                          ORDER BY is.interview_date DESC, is.interview_time DESC";
+        $interviews = $conn->query($interviews_sql);
+        
+        if ($interviews && $interviews->num_rows > 0): ?>
+            <div style="display:flex;flex-wrap:wrap;gap:18px;">
+            <?php while($interview = $interviews->fetch_assoc()): 
+                // Set status color and icon
+                $status_color = '#ff9800'; // Default orange for Pending
+                $status_icon = '⏳'; // Pending
+                if ($interview['status'] === 'Done') {
+                    $status_color = '#4caf50'; // Green
+                    $status_icon = '✓';
+                } elseif ($interview['status'] === 'Scheduled') {
+                    $status_color = '#2196f3'; // Blue
+                    $status_icon = '📅';
+                } elseif ($interview['status'] === 'Cancelled') {
+                    $status_color = '#f44336'; // Red
+                    $status_icon = '❌';
+                } elseif ($interview['status'] === 'Rescheduled') {
+                    $status_color = '#9c27b0'; // Purple
+                    $status_icon = '🔄';
+                }
+            ?>
+                <div style="background:#fff;color:#222;border-radius:8px;box-shadow:0 2px 8px #0002;padding:18px 22px;min-width:220px;max-width:320px;flex:1;position:relative;">
+                    <div style="font-size:1.2em;font-weight:bold;margin-bottom:8px;color:#4fc3f7;"><?php echo htmlspecialchars($interview['job']); ?></div>
+                    <div><b>Applicant:</b> <?php echo htmlspecialchars($interview['username']); ?></div>
+                    <div><b>Company:</b> <?php echo htmlspecialchars($interview['company']); ?></div>
+                    <div style="margin-top:12px;padding:12px;background:#f5f5f5;border-radius:6px;border-left:4px solid <?php echo $status_color; ?>;">
+                        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+                            <span style="font-size:1.2em;"><?php echo $status_icon; ?></span>
+                            <span style="color:<?php echo $status_color; ?>;font-weight:bold;"><?php echo htmlspecialchars($interview['status']); ?></span>
+                            <?php if ($interview['status'] === 'Scheduled'): ?>
+                                <span style="font-size:0.9em;color:#666;margin-left:auto;">
+                                    <?php 
+                                        $interview_datetime = strtotime($interview['interview_date'] . ' ' . $interview['interview_time']);
+                                        $now = time();
+                                        $diff = $interview_datetime - $now;
+                                        if ($diff > 0) {
+                                            $days = floor($diff / (60 * 60 * 24));
+                                            $hours = floor(($diff % (60 * 60 * 24)) / (60 * 60));
+                                            echo "in " . ($days > 0 ? $days . "d " : "") . $hours . "h";
+                                        }
+                                    ?>
+                                </span>
+                            <?php endif; ?>
+                        </div>
+                        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;">
+                            <?php if ($interview['interview_date']): ?>
+                                <div><b>Date:</b> <?php echo htmlspecialchars($interview['interview_date']); ?></div>
+                            <?php endif; ?>
+                            <?php if ($interview['interview_time']): ?>
+                                <div><b>Time:</b> <?php echo htmlspecialchars($interview['interview_time']); ?></div>
+                            <?php endif; ?>
+                            <?php if ($interview['duration']): ?>
+                                <div><b>Duration:</b> <?php echo htmlspecialchars($interview['duration']); ?> minutes</div>
+                            <?php endif; ?>
+                            <?php if ($interview['interview_type']): ?>
+                                <div><b>Type:</b> <?php echo htmlspecialchars($interview['interview_type']); ?></div>
+                            <?php endif; ?>
+                            <?php if ($interview['location']): ?>
+                                <div><b>Location:</b> <?php echo htmlspecialchars($interview['location']); ?></div>
+                            <?php endif; ?>
+                            <?php if ($interview['interviewer']): ?>
+                                <div><b>Interviewer:</b> <?php echo htmlspecialchars($interview['interviewer']); ?></div>
+                            <?php endif; ?>
+                        </div>
+                        <?php if ($interview['notes']): ?>
+                            <div style="margin-top:12px;padding:8px;background:#fff;border-radius:4px;"><b>Notes:</b><br><?php echo nl2br(htmlspecialchars($interview['notes'])); ?></div>
+                        <?php endif; ?>
+                    </div>
+                    <div style="margin-top:12px;display:flex;gap:8px;">
+                        <button onclick="openInterviewModal(<?php echo $interview['application_id']; ?>, '<?php echo htmlspecialchars($interview['status']); ?>', '<?php echo htmlspecialchars($interview['interview_date'] ?? ''); ?>', '<?php echo htmlspecialchars($interview['interview_time'] ?? ''); ?>', '<?php echo htmlspecialchars($interview['interview_type'] ?? ''); ?>', '<?php echo htmlspecialchars($interview['location'] ?? ''); ?>', '<?php echo htmlspecialchars($interview['duration'] ?? ''); ?>', '<?php echo htmlspecialchars($interview['interviewer'] ?? ''); ?>', '<?php echo htmlspecialchars($interview['notes'] ?? ''); ?>');" 
+                                style="background:#4fc3f7;color:#222;border:none;padding:6px 14px;border-radius:6px;cursor:pointer;font-weight:bold;">
+                            Update Interview
+                        </button>
+                        <?php if ($interview['status'] === 'Done'): ?>
+                            <button onclick="openFeedbackModal(<?php echo $interview['id']; ?>)" 
+                                    style="background:#4caf50;color:#fff;border:none;padding:6px 14px;border-radius:6px;cursor:pointer;font-weight:bold;">
+                                Add Feedback
+                            </button>
+                        <?php endif; ?>
+                    </div>
+                    <div style="font-size:0.8em;color:#666;margin-top:8px;">Last updated: <?php echo htmlspecialchars($interview['updated_at']); ?></div>
+                </div>
+            <?php endwhile; ?>
+            </div>
+        <?php else: ?>
+            <div style="color:#ccc;text-align:center;padding:32px;background:#222;border-radius:8px;">
+                No interviews scheduled yet.
+            </div>
+        <?php endif; ?>
+    </div>
     <script>
-    // Modal logic
-    document.getElementById('openModalBtn').onclick = function() {
-        document.getElementById('postModal').style.display = 'block';
-    };
-    document.getElementById('closeModalBtn').onclick = function() {
-        document.getElementById('postModal').style.display = 'none';
-    };
-    window.onclick = function(event) {
-        var postModal = document.getElementById('postModal');
-        var interviewModal = document.getElementById('interviewModal');
-        var feedbackModal = document.getElementById('feedbackModal');
-        if (event.target == postModal) {
+    // Initialize all modal and list elements
+    const postModal = document.getElementById('postModal');
+    const interviewModal = document.getElementById('interviewModal');
+    const feedbackModal = document.getElementById('feedbackModal');
+    const applicationsList = document.getElementById('applicationsList');
+    const interviewList = document.getElementById('interviewList');
+    const jobPostForm = document.getElementById('jobPostForm');
+
+    // Post New Job Modal
+    document.getElementById('openModalBtn').addEventListener('click', function() {
+        postModal.style.display = 'block';
+        document.getElementById('modalTitle').innerText = 'Create Job Post';
+        document.getElementById('edit_id').value = '';
+        jobPostForm.reset();
+    });
+
+    // Close buttons for all modals
+    document.getElementById('closeModalBtn').addEventListener('click', function() {
+        postModal.style.display = 'none';
+    });
+
+    document.getElementById('closeInterviewModal').addEventListener('click', function() {
+        interviewModal.style.display = 'none';
+    });
+
+    document.getElementById('closeFeedbackModal').addEventListener('click', function() {
+        feedbackModal.style.display = 'none';
+    });
+
+    // Close modals when clicking outside
+    window.addEventListener('click', function(event) {
+        if (event.target === postModal) {
             postModal.style.display = 'none';
         }
-        if (event.target == interviewModal) {
+        if (event.target === interviewModal) {
             interviewModal.style.display = 'none';
         }
-        if (event.target == feedbackModal) {
+        if (event.target === feedbackModal) {
             feedbackModal.style.display = 'none';
         }
-    };
-    
-    function openEditModal(id, company, job, requirements, salary) {
-        document.getElementById('postModal').style.display = 'block';
+    });
+
+    // Show/hide applications list
+    function showApplications() {
+        if (applicationsList.style.display === 'none') {
+            applicationsList.style.display = 'block';
+            if (interviewList) {
+                interviewList.style.display = 'none';
+            }
+            applicationsList.scrollIntoView({ behavior: 'smooth' });
+        } else {
+            applicationsList.style.display = 'none';
+        }
+    }
+
+    // Show/hide interviews list
+    function showInterviews() {
+        if (interviewList.style.display === 'none') {
+            interviewList.style.display = 'block';
+            if (applicationsList) {
+                applicationsList.style.display = 'none';
+            }
+            interviewList.scrollIntoView({ behavior: 'smooth' });
+        } else {
+            interviewList.style.display = 'none';
+        }
+    }
+
+    // Edit job modal
+    function openEditModal(id, company, job, requirements, salary, address) {
+        postModal.style.display = 'block';
         document.getElementById('modalTitle').innerText = 'Edit Job Post';
         document.getElementById('edit_id').value = id;
         document.getElementById('company').value = company;
         document.getElementById('job').value = job;
         document.getElementById('requirements').value = requirements;
         document.getElementById('salary').value = salary;
-    }
-    // Show/hide applications list
-    function showApplications() {
-        const applicationsList = document.getElementById('applicationsList');
-        applicationsList.style.display = applicationsList.style.display === 'none' ? 'block' : 'none';
-        
-        // Scroll to applications list
-        if (applicationsList.style.display === 'block') {
-            applicationsList.scrollIntoView({ behavior: 'smooth' });
-        }
+        document.getElementById('address').value = address;
     }
 
-    // Function to view resume
-    function viewResume(resumeUrl) {
-        if (resumeUrl) {
-            window.open(resumeUrl, '_blank');
-        } else {
-            alert('No resume available for this candidate.');
-        }
-    }
-
-    // Function to schedule interview
-    function scheduleInterview(applicationId) {
-        const date = prompt('Enter interview date (YYYY-MM-DD):');
-        const time = prompt('Enter interview time (HH:MM):');
-        if (date && time) {
-            // Here you would typically make an AJAX call to save the interview details
-            alert(`Interview scheduled for ${date} at ${time}`);
-        }
-    }
-
+    // Interview modal
     function openInterviewModal(applicationId, status, date, time, type, location, duration, interviewer, notes) {
-        document.getElementById('interviewModal').style.display = 'block';
+        interviewModal.style.display = 'block';
         document.getElementById('interview_application_id').value = applicationId;
         document.getElementById('interview_status').value = status;
         document.getElementById('interview_date').value = date;
@@ -1108,12 +1258,16 @@ echo '<div style="color:yellow;background:#222;padding:8px;">Jobs found: ' . ($j
         document.getElementById('interview_duration').value = duration || 60;
         document.getElementById('interviewer').value = interviewer;
         document.getElementById('interview_notes').value = notes;
+        updateFormFields();
     }
 
-    document.getElementById('closeInterviewModal').onclick = function() {
-        document.getElementById('interviewModal').style.display = 'none';
+    // Feedback modal
+    function openFeedbackModal(interviewId) {
+        feedbackModal.style.display = 'block';
+        document.getElementById('feedback_interview_id').value = interviewId;
     }
 
+    // Update form fields based on interview status
     function updateFormFields() {
         const status = document.getElementById('interview_status').value;
         const scheduledFields = document.getElementById('scheduledFields');
@@ -1128,18 +1282,38 @@ echo '<div style="color:yellow;background:#222;padding:8px;">Jobs found: ' . ($j
         }
     }
 
-    // Initialize form fields on page load
-    document.addEventListener('DOMContentLoaded', function() {
-        updateFormFields();
+    // Form submission handling
+    jobPostForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        this.submit();
     });
 
-    function openFeedbackModal(interviewId) {
-        document.getElementById('feedbackModal').style.display = 'block';
-        document.getElementById('feedback_interview_id').value = interviewId;
-    }
+    // Initialize form fields on page load
+    document.addEventListener('DOMContentLoaded', function() {
+        // Initialize any existing modals
+        if (document.getElementById('interview_status')) {
+            updateFormFields();
+        }
 
-    document.getElementById('closeFeedbackModal').onclick = function() {
-        document.getElementById('feedbackModal').style.display = 'none';
+        // Add confirmation for delete actions
+        const deleteButtons = document.querySelectorAll('a[href*="delete="]');
+        deleteButtons.forEach(button => {
+            button.addEventListener('click', function(e) {
+                if (!confirm('Are you sure you want to delete this job post?')) {
+                    e.preventDefault();
+                }
+            });
+        });
+    });
+
+    // Add success message handling
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.has('success')) {
+        const successMessage = document.createElement('div');
+        successMessage.style.cssText = 'position:fixed;top:20px;right:20px;background:#4caf50;color:white;padding:15px;border-radius:4px;z-index:1000;';
+        successMessage.textContent = 'Operation completed successfully!';
+        document.body.appendChild(successMessage);
+        setTimeout(() => successMessage.remove(), 3000);
     }
     </script>
     <!-- Add search results summary -->
