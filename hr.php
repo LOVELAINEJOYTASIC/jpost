@@ -63,14 +63,43 @@ if (isset($_POST['delete_applicant'])) {
 if (isset($_POST['edit_applicant'])) {
     $applicant_id = (int)$_POST['edit_applicant'];
     $status = $conn->real_escape_string($_POST['status']);
-    $update_sql = "UPDATE applicants SET status1 = ? WHERE id = ?";
-    $update_stmt = $conn->prepare($update_sql);
-    $update_stmt->bind_param("si", $status, $applicant_id);
-    if ($update_stmt->execute()) {
+    
+    // Start transaction
+    $conn->begin_transaction();
+    
+    try {
+        // Update applicants table
+        $update_sql = "UPDATE applicants SET status1 = ? WHERE id = ?";
+        $update_stmt = $conn->prepare($update_sql);
+        $update_stmt->bind_param("si", $status, $applicant_id);
+        $update_stmt->execute();
+        
+        // Get the user_id and job_id from applicants table
+        $get_user_sql = "SELECT user_id, job_id FROM applicants WHERE id = ?";
+        $get_user_stmt = $conn->prepare($get_user_sql);
+        $get_user_stmt->bind_param("i", $applicant_id);
+        $get_user_stmt->execute();
+        $user_result = $get_user_stmt->get_result();
+        $user_data = $user_result->fetch_assoc();
+        
+        if ($user_data && $user_data['user_id']) {
+            // Update job_applications table for this specific job application
+            $update_job_sql = "UPDATE job_applications SET status = ? WHERE user_id = ? AND job_id = ?";
+            $update_job_stmt = $conn->prepare($update_job_sql);
+            $update_job_stmt->bind_param("sii", $status, $user_data['user_id'], $user_data['job_id']);
+            $update_job_stmt->execute();
+        }
+        
+        // Commit transaction
+        $conn->commit();
         header('Location: hr.php?success=updated');
         exit();
+    } catch (Exception $e) {
+        // Rollback transaction on error
+        $conn->rollback();
+        header('Location: hr.php?error=update_failed');
+        exit();
     }
-    $update_stmt->close();
 }
 
 // Create user_id column in applicants table if it doesn't exist
@@ -79,17 +108,24 @@ if ($check_column->num_rows == 0) {
     $conn->query("ALTER TABLE applicants ADD COLUMN user_id INT, ADD FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL");
 }
 
+// Create job_type column in jobs table if it doesn't exist
+$check_job_type = $conn->query("SHOW COLUMNS FROM jobs LIKE 'job_type'");
+if ($check_job_type->num_rows == 0) {
+    $conn->query("ALTER TABLE jobs ADD COLUMN job_type ENUM('Full Time', 'Part Time', 'Remote', 'Internship') DEFAULT 'Full Time'");
+}
+
 // Fetch applicants from database with search functionality
 $search = isset($_GET['search']) ? $conn->real_escape_string($_GET['search']) : '';
 $status_filter = isset($_GET['status']) ? $conn->real_escape_string($_GET['status']) : '';
 
-$sql = "SELECT a.*, up.full_name, up.birthday, up.address, up.contact, up.application 
+$sql = "SELECT a.*, up.full_name, up.birthday, up.address, up.contact, up.application, j.job, j.job_type 
         FROM applicants a 
         LEFT JOIN user_profiles up ON a.user_id = up.user_id 
+        LEFT JOIN jobs j ON a.job_id = j.id 
         WHERE 1=1";
 
 if (!empty($search)) {
-    $sql .= " AND (a.name LIKE '%$search%' OR a.email LIKE '%$search%' OR a.phone LIKE '%$search%' OR up.full_name LIKE '%$search%')";
+    $sql .= " AND (a.name LIKE '%$search%' OR a.email LIKE '%$search%' OR a.phone LIKE '%$search%' OR up.full_name LIKE '%$search%' OR j.job LIKE '%$search%')";
 }
 if (!empty($status_filter)) {
     $sql .= " AND a.status1 = '$status_filter'";
@@ -132,6 +168,25 @@ function linkApplicantsWithUsers($conn) {
 
 // Call the function to link applicants
 linkApplicantsWithUsers($conn);
+
+// Get candidate statistics
+$stats_sql = "SELECT 
+    status1,
+    COUNT(*) as count,
+    (COUNT(*) * 100.0 / (SELECT COUNT(*) FROM applicants)) as percentage
+FROM applicants 
+GROUP BY status1";
+
+$stats_result = $conn->query($stats_sql);
+$candidate_stats = [];
+if ($stats_result && $stats_result->num_rows > 0) {
+    while ($row = $stats_result->fetch_assoc()) {
+        $candidate_stats[$row['status1']] = [
+            'count' => $row['count'],
+            'percentage' => round($row['percentage'], 1)
+        ];
+    }
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -441,6 +496,155 @@ linkApplicantsWithUsers($conn);
                 align-items: center;
             }
         }
+        .stats-container {
+            background: #232a34;
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 32px;
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+        .stat-card {
+            background: #1a1f28;
+            border-radius: 8px;
+            padding: 16px;
+            text-align: center;
+        }
+        .stat-title {
+            color: #888;
+            font-size: 0.9em;
+            margin-bottom: 8px;
+        }
+        .stat-value {
+            color: #4fc3f7;
+            font-size: 2em;
+            font-weight: bold;
+            margin-bottom: 4px;
+        }
+        .stat-percentage {
+            color: #4caf50;
+            font-size: 1.2em;
+            margin-bottom: 8px;
+        }
+        .stat-progress {
+            background: #333;
+            height: 4px;
+            border-radius: 2px;
+            overflow: hidden;
+        }
+        .progress-bar {
+            background: #4fc3f7;
+            height: 100%;
+            transition: width 0.3s ease;
+        }
+        .candidates-list {
+            display: grid;
+            gap: 20px;
+            margin-top: 32px;
+        }
+        .candidate-card {
+            background: #232a34;
+            border-radius: 12px;
+            padding: 20px;
+            border: 1px solid #333;
+        }
+        .candidate-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 16px;
+        }
+        .candidate-info h3 {
+            margin: 0;
+            color: #4fc3f7;
+        }
+        .full-name {
+            color: #888;
+            font-size: 0.9em;
+        }
+        .candidate-details {
+            margin-bottom: 20px;
+        }
+        .detail-row {
+            display: flex;
+            margin-bottom: 8px;
+        }
+        .detail-label {
+            color: #888;
+            width: 100px;
+        }
+        .detail-value {
+            color: #fff;
+        }
+        .candidate-progress {
+            margin-bottom: 20px;
+        }
+        .progress-steps {
+            display: flex;
+            justify-content: space-between;
+            position: relative;
+            margin: 0 20px;
+        }
+        .progress-steps::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: #333;
+            z-index: 1;
+        }
+        .step {
+            background: #1a1f28;
+            border: 2px solid #333;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.8em;
+            color: #888;
+            position: relative;
+            z-index: 2;
+        }
+        .step.active {
+            background: #4fc3f7;
+            border-color: #4fc3f7;
+            color: #fff;
+        }
+        .candidate-actions {
+            display: flex;
+            gap: 12px;
+        }
+        .update-btn, .view-btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background-color 0.2s;
+        }
+        .update-btn {
+            background: #4fc3f7;
+            color: #222;
+        }
+        .view-btn {
+            background: #666;
+            color: #fff;
+        }
+        .update-btn:hover {
+            background: #0288d1;
+            color: #fff;
+        }
+        .view-btn:hover {
+            background: #444;
+        }
     </style>
 </head>
 <body>
@@ -494,7 +698,8 @@ linkApplicantsWithUsers($conn);
             <table class="applicants-table">
                 <tr>
                     <th>Name</th>
-                    <th>Phone</th>
+                    <th>Job Position</th>
+                    <th>Job Type</th>
                     <th>Status</th>
                     <th>Applied</th>
                     <th>Actions</th>
@@ -510,7 +715,8 @@ linkApplicantsWithUsers($conn);
                                     <br><small style="color:#666;"><?php echo htmlspecialchars($app['full_name'] ?? ''); ?></small>
                                 <?php endif; ?>
                             </td>
-                            <td><?php echo htmlspecialchars($app['phone']); ?></td>
+                            <td><?php echo htmlspecialchars($app['job'] ?? 'N/A'); ?></td>
+                            <td><?php echo htmlspecialchars($app['job_type'] ?? 'N/A'); ?></td>
                             <td>
                                 <span class="badge <?php echo strtolower(str_replace(' ', '', $app['status1'])); ?>">
                                     <?php echo htmlspecialchars($app['status1']); ?>

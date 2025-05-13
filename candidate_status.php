@@ -15,6 +15,24 @@ if ($check_column->num_rows == 0) {
     $conn->query("ALTER TABLE job_applications ADD COLUMN notes TEXT");
 }
 
+// Add updated_at column if it doesn't exist
+$check_updated_at = $conn->query("SHOW COLUMNS FROM job_applications LIKE 'updated_at'");
+if ($check_updated_at->num_rows == 0) {
+    $conn->query("ALTER TABLE job_applications ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP");
+}
+
+// Define valid statuses
+$valid_statuses = [
+    'Pending' => 'status-pending',
+    'Under Review' => 'status-review',
+    'Shortlisted' => 'status-shortlisted',
+    'Interview Scheduled' => 'status-interview',
+    'Offered' => 'status-offered',
+    'Accepted' => 'status-accepted',
+    'Rejected' => 'status-rejected',
+    'Withdrawn' => 'status-withdrawn'
+];
+
 // Handle delete functionality
 if (isset($_POST['delete_candidate'])) {
     $candidate_id = (int)$_POST['delete_candidate'];
@@ -34,11 +52,20 @@ if (isset($_POST['edit_candidate'])) {
     $status = $conn->real_escape_string($_POST['status']);
     $notes = $conn->real_escape_string($_POST['notes']);
     
-    $update_sql = "UPDATE job_applications SET status = ?, notes = ? WHERE id = ?";
+    // Validate status
+    if (!array_key_exists($status, $valid_statuses)) {
+        header('Location: candidate_status.php?error=invalid_status');
+        exit();
+    }
+    
+    $update_sql = "UPDATE job_applications SET status = ?, notes = ?, updated_at = NOW() WHERE id = ?";
     $update_stmt = $conn->prepare($update_sql);
     $update_stmt->bind_param("ssi", $status, $notes, $candidate_id);
     if ($update_stmt->execute()) {
         header('Location: candidate_status.php?success=updated');
+        exit();
+    } else {
+        header('Location: candidate_status.php?error=update_failed');
         exit();
     }
     $update_stmt->close();
@@ -94,12 +121,32 @@ $result = $conn->query($sql);
             color: #ffd700;
             font-weight: bold;
         }
+        .status-review {
+            color: #ff9800;
+            font-weight: bold;
+        }
+        .status-shortlisted {
+            color: #2196f3;
+            font-weight: bold;
+        }
+        .status-interview {
+            color: #9c27b0;
+            font-weight: bold;
+        }
+        .status-offered {
+            color: #00bcd4;
+            font-weight: bold;
+        }
         .status-accepted {
             color: #4caf50;
             font-weight: bold;
         }
         .status-rejected {
             color: #f44336;
+            font-weight: bold;
+        }
+        .status-withdrawn {
+            color: #9e9e9e;
             font-weight: bold;
         }
         .action-buttons {
@@ -212,6 +259,14 @@ $result = $conn->query($sql);
             margin-bottom: 24px;
             display: inline-block;
         }
+        .error-message {
+            background: #f44336;
+            color: #fff;
+            padding: 12px;
+            border-radius: 6px;
+            margin-bottom: 24px;
+            display: inline-block;
+        }
     </style>
 </head>
 <body>
@@ -221,6 +276,14 @@ $result = $conn->query($sql);
             <?php 
             if ($_GET['success'] === 'updated') echo 'Candidate status updated successfully!';
             if ($_GET['success'] === 'deleted') echo 'Candidate deleted successfully!';
+            ?>
+        </div>
+    <?php endif; ?>
+    <?php if (isset($_GET['error'])): ?>
+        <div class="error-message">
+            <?php 
+            if ($_GET['error'] === 'invalid_status') echo 'Invalid status selected!';
+            if ($_GET['error'] === 'update_failed') echo 'Failed to update candidate status!';
             ?>
         </div>
     <?php endif; ?>
@@ -239,7 +302,7 @@ $result = $conn->query($sql);
                     <td><?php echo htmlspecialchars($row['username']); ?></td>
                     <td><?php echo htmlspecialchars($row['job']); ?></td>
                     <td><?php echo htmlspecialchars($row['company']); ?></td>
-                    <td class="status-<?php echo strtolower($row['status']); ?>">
+                    <td class="<?php echo $valid_statuses[$row['status']] ?? ''; ?>">
                         <?php echo htmlspecialchars($row['status']); ?>
                     </td>
                     <td><?php echo htmlspecialchars($row['created_at']); ?></td>
@@ -265,30 +328,27 @@ $result = $conn->query($sql);
     <div id="editModal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
-                <h2>Edit Application Status</h2>
+                <h2>Update Candidate Status</h2>
                 <button class="close-modal" onclick="closeEditModal()">&times;</button>
             </div>
-            <form method="POST">
+            <form method="POST" id="editForm">
+                <input type="hidden" name="edit_candidate" id="edit_candidate_id">
                 <div class="modal-body">
-                    <input type="hidden" name="edit_candidate" id="edit_candidate_id">
                     <div class="form-group">
                         <label for="status">Status:</label>
                         <select name="status" id="status" required>
-                            <option value="Pending">Pending</option>
-                            <option value="Accepted">Accepted</option>
-                            <option value="Rejected">Rejected</option>
+                            <?php foreach ($valid_statuses as $status => $class): ?>
+                                <option value="<?php echo htmlspecialchars($status); ?>"><?php echo htmlspecialchars($status); ?></option>
+                            <?php endforeach; ?>
                         </select>
                     </div>
                     <div class="form-group">
                         <label for="notes">Notes:</label>
-                        <textarea name="notes" id="notes" placeholder="Add any notes about the application..."></textarea>
-                    </div>
-                    <div class="form-group">
-                        <label for="address">Address</label>
-                        <input type="text" id="address" name="address" required>
+                        <textarea name="notes" id="notes" placeholder="Add any notes about this status change..."></textarea>
                     </div>
                 </div>
                 <div class="modal-footer">
+                    <button type="button" class="cancel-btn" onclick="closeEditModal()">Cancel</button>
                     <button type="submit" class="save-btn">Save Changes</button>
                 </div>
             </form>
@@ -300,7 +360,7 @@ $result = $conn->query($sql);
         document.getElementById('editModal').style.display = 'block';
         document.getElementById('edit_candidate_id').value = id;
         document.getElementById('status').value = currentStatus;
-        document.getElementById('notes').value = currentNotes || '';
+        document.getElementById('notes').value = currentNotes;
     }
 
     function closeEditModal() {

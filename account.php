@@ -204,7 +204,7 @@ $profile = $result->fetch_assoc();
 $accepted_jobs_sql = "SELECT j.*, ja.status, ja.created_at as applied_date 
                       FROM jobs j 
                       INNER JOIN job_applications ja ON j.id = ja.job_id 
-                      WHERE ja.user_id = ? AND ja.status IN ('Accepted', 'Pending')
+                      WHERE ja.user_id = ? 
                       ORDER BY ja.created_at DESC";
 $accepted_jobs_stmt = $conn->prepare($accepted_jobs_sql);
 $accepted_jobs_stmt->bind_param("i", $user_id);
