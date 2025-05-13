@@ -31,12 +31,18 @@ $conn->query("CREATE TABLE IF NOT EXISTS user_profiles (
     contact VARCHAR(255),
     application TEXT,
     avatar VARCHAR(255),
-    resume VARCHAR(255),
+    resume_file VARCHAR(255),
     status ENUM('Active', 'Offline') DEFAULT 'Active',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 )");
+
+// Add resume_file column if it doesn't exist
+$check_column = $conn->query("SHOW COLUMNS FROM user_profiles LIKE 'resume_file'");
+if ($check_column->num_rows === 0) {
+    $conn->query("ALTER TABLE user_profiles ADD COLUMN resume_file VARCHAR(255) AFTER avatar");
+}
 
 $success_message = '';
 $error_message = '';
@@ -117,8 +123,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $target = "$uploads_dir/$filename";
                 if (move_uploaded_file($tmp_name, $target)) {
                     $resume_path = $target;
-                    if (isset($profile['resume']) && $profile['resume'] && file_exists($profile['resume'])) {
-                        unlink($profile['resume']);
+                    if (isset($profile['resume_file']) && $profile['resume_file'] && file_exists($profile['resume_file'])) {
+                        unlink($profile['resume_file']);
                     }
                 } else {
                     $errors[] = "Failed to upload resume";
@@ -151,7 +157,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         
         if ($resume_path) {
-            $sql .= ", resume = ?";
+            $sql .= ", resume_file = ?";
             $params[] = $resume_path;
             $types .= "s";
         }
@@ -213,7 +219,7 @@ $contact = $profile['contact'] ?? '';
 $application = $profile['application'] ?? '';
 $avatar = $profile['avatar'] ?? 'https://cdn-icons-png.flaticon.com/512/3135/3135715.png';
 $status = $profile['status'] ?? 'Active';
-$resume = $profile['resume'] ?? '';
+$resume = $profile['resume_file'] ?? '';
 
 $stmt->close();
 ?>
@@ -457,6 +463,7 @@ $stmt->close();
                 <button>&#128269;</button>
             </div>
             <span class="settings">&#9881;</span>
+            <a href="logout.php" style="color:#fff; text-decoration:none; margin-left:18px; background:#f44336; padding:8px 16px; border-radius:4px;">Logout</a>
         </div>
     </div>
     <div class="account-container">
@@ -476,8 +483,8 @@ $stmt->close();
                     <li>*Contacts/Email Address: <input type="text" name="contact" value="<?php echo htmlspecialchars($contact); ?>" required style="width:90%;padding:4px 8px;margin:4px 0;border-radius:8px;border:none;"></li>
                     <li>*Application Letter (skills/position): <textarea name="application" required style="width:90%;padding:4px 8px;margin:4px 0;border-radius:8px;border:none;resize:vertical;"><?php echo htmlspecialchars($application); ?></textarea></li>
                     <li>*Resume (PDF, DOC, DOCX): 
-                        <?php if ($resume): ?>
-                            <a href="<?php echo htmlspecialchars($resume); ?>" target="_blank" class="resume-link">View/Download Resume</a><br>
+                        <?php if ($profile['resume_file']): ?>
+                            <a href="<?php echo htmlspecialchars($profile['resume_file']); ?>" target="_blank" class="resume-link">View/Download Resume</a><br>
                         <?php endif; ?>
                         <input type="file" name="resume" accept=".pdf,.doc,.docx" style="margin-top:4px;">
                         <button type="submit" name="save_resume" value="1" style="margin-left:8px;padding:4px 16px;border-radius:8px;background:#4fc3f7;color:#222;font-weight:bold;border:none;cursor:pointer;">Save Resume</button>

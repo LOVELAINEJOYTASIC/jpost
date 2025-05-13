@@ -37,6 +37,11 @@ if (isset($_POST['apply_job']) && isset($_SESSION['user_id'])) {
     $job_id = (int)$_POST['job_id'];
     $user_id = $_SESSION['user_id'];
     
+    // Initialize statements
+    $stmt = null;
+    $user_stmt = null;
+    $applicant_stmt = null;
+    
     // Check if already applied
     $check_sql = "SELECT id FROM job_applications WHERE job_id = ? AND user_id = ?";
     $check_stmt = $conn->prepare($check_sql);
@@ -45,16 +50,48 @@ if (isset($_POST['apply_job']) && isset($_SESSION['user_id'])) {
     $result = $check_stmt->get_result();
     
     if ($result->num_rows === 0) {
-        $sql = "INSERT INTO job_applications (job_id, user_id, status) VALUES (?, ?, 'Pending')";
-        $stmt = $conn->prepare($sql);
-        $stmt->bind_param("ii", $job_id, $user_id);
+        // Start transaction
+        $conn->begin_transaction();
         
-        if ($stmt->execute()) {
+        try {
+            // Insert into job_applications
+            $sql = "INSERT INTO job_applications (job_id, user_id, status) VALUES (?, ?, 'Pending')";
+            $stmt = $conn->prepare($sql);
+            $stmt->bind_param("ii", $job_id, $user_id);
+            $stmt->execute();
+            
+            // Get user details
+            $user_sql = "SELECT username FROM users WHERE id = ?";
+            $user_stmt = $conn->prepare($user_sql);
+            $user_stmt->bind_param("i", $user_id);
+            $user_stmt->execute();
+            $user_result = $user_stmt->get_result();
+            $user_data = $user_result->fetch_assoc();
+            
+            // Insert into applicants table
+            $applicant_sql = "INSERT INTO applicants (name, job_id, status1, user_id) VALUES (?, ?, 'In Review', ?)";
+            $applicant_stmt = $conn->prepare($applicant_sql);
+            $applicant_stmt->bind_param("sii", 
+                $user_data['username'],
+                $job_id,
+                $user_id
+            );
+            $applicant_stmt->execute();
+            
+            // Commit transaction
+            $conn->commit();
             $success_message = "Application submitted successfully! You can view your application status in your account.";
-        } else {
-            $error_message = "Error submitting application: " . $stmt->error;
+            
+        } catch (Exception $e) {
+            // Rollback transaction on error
+            $conn->rollback();
+            $error_message = "Error submitting application: " . $e->getMessage();
+        } finally {
+            // Close all statements if they exist
+            if ($stmt !== null) $stmt->close();
+            if ($user_stmt !== null) $user_stmt->close();
+            if ($applicant_stmt !== null) $applicant_stmt->close();
         }
-        $stmt->close();
     } else {
         $error_message = "You have already applied for this job.";
     }
@@ -331,8 +368,8 @@ echo '<div style="color:yellow;background:#222;padding:8px;">Jobs found: ' . ($j
             position: fixed;
             top: 0;
             left: 0;
-            width: 300%;
-            height: 200%;
+            width: 100%;
+            height: 100%;
             background: rgba(0,0,0,0.8);
             z-index: 1000;
             justify-content: center;
@@ -343,7 +380,7 @@ echo '<div style="color:yellow;background:#222;padding:8px;">Jobs found: ' . ($j
             padding: 24px;
             border-radius: 12px;
             width: 90%;
-            max-width: 800px;
+            max-width: 500px;
             text-align: center;
             border: 2px solid #4fc3f7;
         }
@@ -521,14 +558,19 @@ echo '<div style="color:yellow;background:#222;padding:8px;">Jobs found: ' . ($j
         </div>
     </div>
 
+    <!-- Application Modal -->
     <div id="applicationModal" class="modal">
         <div class="modal-content">
             <h3 style="margin: 0 0 16px 0; color: #4fc3f7;">Confirm Application</h3>
             <p>Are you sure you want to apply for this position?</p>
-            <div class="modal-buttons">
-                <button class="modal-button confirm-button" onclick="submitApplication()">Yes, Apply</button>
-                <button class="modal-button cancel-button" onclick="closeModal()">Cancel</button>
-            </div>
+            <form method="POST" id="applicationForm">
+                <input type="hidden" name="job_id" id="jobIdInput">
+                <input type="hidden" name="apply_job" value="1">
+                <div class="modal-buttons">
+                    <button type="submit" class="modal-button confirm-button">Yes, Apply</button>
+                    <button type="button" class="modal-button cancel-button" onclick="closeModal()">Cancel</button>
+                </div>
+            </form>
         </div>
     </div>
 
@@ -573,44 +615,18 @@ echo '<div style="color:yellow;background:#222;padding:8px;">Jobs found: ' . ($j
     </div>
 
     <script>
-    let currentJobId = null;
-
     function applyForJob(jobId) {
-        <?php if (!isset($_SESSION['username'])): ?>
+        <?php if (!isset($_SESSION['user_id'])): ?>
             alert('Please login to apply for jobs');
             window.location.href = 'login.php';
         <?php else: ?>
-            currentJobId = jobId;
+            document.getElementById('jobIdInput').value = jobId;
             document.getElementById('applicationModal').style.display = 'flex';
         <?php endif; ?>
     }
 
     function closeModal() {
         document.getElementById('applicationModal').style.display = 'none';
-        currentJobId = null;
-    }
-
-    function submitApplication() {
-        if (currentJobId) {
-            const form = document.createElement('form');
-            form.method = 'POST';
-            form.style.display = 'none';
-            
-            const jobIdInput = document.createElement('input');
-            jobIdInput.type = 'hidden';
-            jobIdInput.name = 'job_id';
-            jobIdInput.value = currentJobId;
-            
-            const applyInput = document.createElement('input');
-            applyInput.type = 'hidden';
-            applyInput.name = 'apply_job';
-            applyInput.value = '1';
-            
-            form.appendChild(jobIdInput);
-            form.appendChild(applyInput);
-            document.body.appendChild(form);
-            form.submit();
-        }
     }
 
     // Close message after 3 seconds
@@ -622,6 +638,22 @@ echo '<div style="color:yellow;background:#222;padding:8px;">Jobs found: ' . ($j
                 setTimeout(() => message.remove(), 500);
             }, 3000);
         });
+    });
+
+    // Close modal when clicking outside
+    window.onclick = function(event) {
+        const modal = document.getElementById('applicationModal');
+        if (event.target == modal) {
+            closeModal();
+        }
+    }
+
+    // Add this to ensure the modal is properly displayed
+    document.addEventListener('DOMContentLoaded', function() {
+        const modal = document.getElementById('applicationModal');
+        if (modal) {
+            modal.style.display = 'none';
+        }
     });
     </script>
 </body>

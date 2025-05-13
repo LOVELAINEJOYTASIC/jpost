@@ -333,6 +333,39 @@ if (!empty($search_query)) {
             background: #0288d1;
             color: #fff;
         }
+        .footer-bar {
+            width: 100%;
+            background: #181818;
+            border-top: 2px solid #fff;
+            position: fixed;
+            left: 0;
+            bottom: 0;
+            z-index: 100;
+            padding: 0;
+        }
+        .footer-links {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 60px;
+            padding: 4px 0 0 0;
+        }
+        .footer-links a {
+            color: #fff;
+            text-decoration: underline;
+            font-size: 0.95em;
+            padding: 0 8px 2px 8px;
+            transition: color 0.2s;
+        }
+        .footer-links a:hover {
+            color: #4fc3f7;
+        }
+        @media (max-width: 600px) {
+            .footer-links {
+                gap: 18px;
+                font-size: 0.9em;
+            }
+        }
     </style>
 </head>
 <body>
@@ -432,5 +465,14 @@ if (!empty($search_query)) {
         error_log('user_type in session: ' . $_SESSION['user_type']);
     }
     ?>
+
+    <footer class="footer-bar">
+        <div class="footer-links">
+            <a href="#">Security & Privacy</a>
+            <a href="#">Terms and Condition</a>
+            <a href="#">About</a>
+            <a href="#">Report</a>
+        </div>
+    </footer>
 </body>
 </html> 

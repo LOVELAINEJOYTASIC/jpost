@@ -44,117 +44,67 @@ if ($conn->query($create_employers)) {
 }
 
 // Create jobs table
-$create_jobs = "CREATE TABLE IF NOT EXISTS jobs (
+$sql = "CREATE TABLE IF NOT EXISTS jobs (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    employer_id INT,
-    title VARCHAR(255) NOT NULL,
-    description TEXT,
-    category VARCHAR(100),
-    location VARCHAR(255),
-    employment_type VARCHAR(50),
-    salary_range VARCHAR(100),
+    company VARCHAR(255) NOT NULL,
+    job VARCHAR(255) NOT NULL,
     requirements TEXT,
-    status ENUM('active', 'pending', 'closed') DEFAULT 'pending',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (employer_id) REFERENCES employers(id)
+    salary VARCHAR(100),
+    address TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 )";
 
-if ($conn->query($create_jobs)) {
-    echo "Successfully created jobs table<br>";
-    
-    // Insert sample jobs
-    $jobs = [
-        [
-            1, // Tech Solutions Inc.
-            'Senior Software Developer',
-            'We are looking for an experienced software developer to join our team. The ideal candidate should have strong programming skills and experience with modern web technologies.',
-            'Technology',
-            'New York, NY',
-            'Full-time',
-            '$100,000 - $150,000',
-            '5+ years of experience in web development\nStrong knowledge of PHP, JavaScript, and MySQL\nExperience with modern frameworks'
-        ],
-        [
-            2, // Global Finance Ltd.
-            'Financial Analyst',
-            'Join our finance team to analyze market trends and provide strategic insights. The role involves financial modeling and market research.',
-            'Finance',
-            'London, UK',
-            'Full-time',
-            '$80,000 - $120,000',
-            'Bachelor\'s degree in Finance or related field\n3+ years of financial analysis experience\nStrong analytical skills'
-        ],
-        [
-            3, // Healthcare Plus
-            'Registered Nurse',
-            'We are seeking a dedicated RN to provide quality patient care in our state-of-the-art facility.',
-            'Healthcare',
-            'Boston, MA',
-            'Full-time',
-            '$70,000 - $90,000',
-            'Valid RN license\n2+ years of clinical experience\nStrong patient care skills'
-        ]
-    ];
-    
-    $insert_job = "INSERT INTO jobs (employer_id, title, description, category, location, employment_type, salary_range, requirements) 
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
-    $stmt = $conn->prepare($insert_job);
-    
-    foreach ($jobs as $job) {
-        $stmt->bind_param("isssssss", $job[0], $job[1], $job[2], $job[3], $job[4], $job[5], $job[6], $job[7]);
-        if ($stmt->execute()) {
-            echo "Added job: " . htmlspecialchars($job[1]) . "<br>";
-        } else {
-            echo "Error adding job: " . $stmt->error . "<br>";
-        }
-    }
-    $stmt->close();
+if ($conn->query($sql) === TRUE) {
+    echo "Jobs table created successfully or already exists<br>";
 } else {
     echo "Error creating jobs table: " . $conn->error . "<br>";
+}
+
+// Create applicants table
+$create_applicants = "CREATE TABLE IF NOT EXISTS applicants (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    email VARCHAR(255) NOT NULL,
+    phone VARCHAR(20),
+    resume_url VARCHAR(255),
+    status1 ENUM('In Review','In Process','Interview','On Demand','Accepted','Cancelled','In Waiting'),
+    status2 VARCHAR(50),
+    status3 VARCHAR(50),
+    job_id INT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    user_id INT,
+    FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE SET NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+)";
+
+if ($conn->query($create_applicants)) {
+    echo "Successfully created applicants table<br>";
+} else {
+    echo "Error creating applicants table: " . $conn->error . "<br>";
 }
 
 // Create job_applications table
 $create_applications = "CREATE TABLE IF NOT EXISTS job_applications (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    job_id INT,
-    applicant_id INT,
-    status ENUM('pending', 'reviewed', 'interviewed', 'accepted', 'rejected') DEFAULT 'pending',
-    application_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (job_id) REFERENCES jobs(id),
-    FOREIGN KEY (applicant_id) REFERENCES applicants(id)
+    job_id INT NOT NULL,
+    user_id INT NOT NULL,
+    status ENUM('Pending','Accepted','Rejected') DEFAULT 'Pending',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    notes TEXT,
+    FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 )";
 
 if ($conn->query($create_applications)) {
     echo "Successfully created job_applications table<br>";
-    
-    // Insert sample applications
-    $applications = [
-        [1, 1, 'pending'],  // John Doe applied for Senior Software Developer
-        [1, 2, 'reviewed'], // Jane Smith applied for Senior Software Developer
-        [2, 3, 'interviewed'] // Mike Johnson applied for Financial Analyst
-    ];
-    
-    $insert_application = "INSERT INTO job_applications (job_id, applicant_id, status) VALUES (?, ?, ?)";
-    $stmt = $conn->prepare($insert_application);
-    
-    foreach ($applications as $app) {
-        $stmt->bind_param("iis", $app[0], $app[1], $app[2]);
-        if ($stmt->execute()) {
-            echo "Added application for job ID: " . $app[0] . "<br>";
-        } else {
-            echo "Error adding application: " . $stmt->error . "<br>";
-        }
-    }
-    $stmt->close();
 } else {
     echo "Error creating job_applications table: " . $conn->error . "<br>";
 }
 
 // Verify the tables
 echo "<br>Table structure:<br>";
-$tables = ['employers', 'jobs', 'job_applications'];
+$tables = ['employers', 'jobs', 'applicants', 'job_applications'];
 foreach ($tables as $table) {
     echo "<br>$table table structure:<br>";
     $structure = $conn->query("DESCRIBE $table");

@@ -4,339 +4,99 @@ ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
 session_start();
 
-// Only allow access if user is employer
-if (!isset($_SESSION['user_id']) || strtolower($_SESSION['user_type'] ?? '') !== 'employer') {
+// Check if user is logged in and is an employer
+if (!isset($_SESSION['user_id']) || strtolower($_SESSION['user_type']) !== 'employer') {
     header('Location: login.php');
     exit();
 }
 
-$host = 'localhost';
-$user = 'root';
-$pass = '';
-$db = 'jpost';
+require_once 'config.php';
+$conn = getDBConnection();
 
-$conn = new mysqli($host, $user, $pass);
-if ($conn->connect_error) {
-    die('Database connection failed: ' . $conn->connect_error);
-}
-$conn->query("CREATE DATABASE IF NOT EXISTS `$db`");
-$conn->close();
-
-$conn = new mysqli($host, $user, $pass, $db);
-if ($conn->connect_error) {
-    die('Database connection failed: ' . $conn->connect_error);
-}
-
-$conn->query("CREATE TABLE IF NOT EXISTS jobs (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    company VARCHAR(255) NOT NULL,
-    job VARCHAR(255) NOT NULL,
-    requirements TEXT NOT NULL,
-    salary VARCHAR(100) NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-)");
-
-// Check if address column exists, if not add it
-$check_column = $conn->query("SHOW COLUMNS FROM jobs LIKE 'address'");
-if ($check_column->num_rows == 0) {
-    $conn->query("ALTER TABLE jobs ADD COLUMN address VARCHAR(255) NOT NULL AFTER salary");
-}
-
-$conn->query("CREATE TABLE IF NOT EXISTS users (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    username VARCHAR(100) NOT NULL UNIQUE,
-    password VARCHAR(255) NOT NULL,
-    user_type ENUM('jobseeker','employer') NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-)");
-
-// Create user_profiles table if not exists
-$conn->query("CREATE TABLE IF NOT EXISTS user_profiles (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    user_id INT NOT NULL,
-    full_name VARCHAR(255),
-    contact VARCHAR(100),
-    email VARCHAR(255),
-    resume VARCHAR(255),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-)");
-
-// Create applications table if not exists
-$conn->query("CREATE TABLE IF NOT EXISTS job_applications (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    job_id INT NOT NULL,
-    user_id INT NOT NULL,
-    status ENUM('Pending', 'Accepted', 'Rejected') DEFAULT 'Pending',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-)");
-
-// Create interview_status table if not exists
-$conn->query("CREATE TABLE IF NOT EXISTS interview_status (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    application_id INT NOT NULL,
-    status ENUM('Pending', 'Scheduled', 'Done', 'Cancelled', 'Rescheduled') DEFAULT 'Pending',
-    interview_date DATE,
-    interview_time TIME,
-    interview_type ENUM('Online', 'In-Person', 'Phone') DEFAULT 'In-Person',
-    location VARCHAR(255),
-    duration INT DEFAULT 60,
-    interviewer VARCHAR(255),
-    notes TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (application_id) REFERENCES job_applications(id) ON DELETE CASCADE
-)");
-
-// Add interview feedback table
-$conn->query("CREATE TABLE IF NOT EXISTS interview_feedback (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    interview_id INT NOT NULL,
-    technical_rating INT CHECK (technical_rating BETWEEN 1 AND 5),
-    communication_rating INT CHECK (communication_rating BETWEEN 1 AND 5),
-    experience_rating INT CHECK (experience_rating BETWEEN 1 AND 5),
-    overall_rating INT CHECK (overall_rating BETWEEN 1 AND 5),
-    strengths TEXT,
-    weaknesses TEXT,
-    feedback_notes TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (interview_id) REFERENCES interview_status(id) ON DELETE CASCADE
-)");
-
-// Handle delete
-if (isset($_GET['delete'])) {
-    $id = intval($_GET['delete']);
-    $conn->query("DELETE FROM jobs WHERE id=$id");
-    header('Location: dashboard.php');
-    exit();
-}
-
-// Handle edit (update)
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_id']) && $_POST['edit_id'] !== '') {
-    $id = intval($_POST['edit_id']);
+// Handle new job posting
+if (isset($_POST['post_new_job'])) {
+    $job_title = $conn->real_escape_string($_POST['job_title']);
     $company = $conn->real_escape_string($_POST['company']);
-    $job = $conn->real_escape_string($_POST['job']);
     $requirements = $conn->real_escape_string($_POST['requirements']);
     $salary = $conn->real_escape_string($_POST['salary']);
     $address = $conn->real_escape_string($_POST['address']);
     
-    $sql = "UPDATE jobs SET company=?, job=?, requirements=?, salary=?, address=? WHERE id=?";
-    $stmt = $conn->prepare($sql);
-    $stmt->bind_param("sssssi", $company, $job, $requirements, $salary, $address, $id);
+    $insert_sql = "INSERT INTO jobs (job, company, requirements, salary, address) VALUES (?, ?, ?, ?, ?)";
+    $insert_stmt = $conn->prepare($insert_sql);
+    $insert_stmt->bind_param("sssss", $job_title, $company, $requirements, $salary, $address);
     
-    if ($stmt->execute()) {
-        header('Location: dashboard.php?success=2');
+    if ($insert_stmt->execute()) {
+        header('Location: dashboard.php?success=posted');
         exit();
     } else {
-        header('Location: dashboard.php?error=2');
+        $error = "Error posting job: " . $insert_stmt->error;
+    }
+    $insert_stmt->close();
+}
+
+// Handle job deletion
+if (isset($_POST['delete_job'])) {
+    $job_id = (int)$_POST['delete_job'];
+    $delete_sql = "DELETE FROM jobs WHERE id = ?";
+    $delete_stmt = $conn->prepare($delete_sql);
+    $delete_stmt->bind_param("i", $job_id);
+    if ($delete_stmt->execute()) {
+        header('Location: dashboard.php?success=deleted');
         exit();
     }
-    $stmt->close();
+    $delete_stmt->close();
 }
 
-// Handle new job post
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && (!isset($_POST['edit_id']) || $_POST['edit_id'] === '')) {
-    if (isset($_POST['company'], $_POST['job'], $_POST['requirements'], $_POST['salary'], $_POST['address'])) {
-        $company = $conn->real_escape_string($_POST['company']);
-        $job = $conn->real_escape_string($_POST['job']);
-        $requirements = $conn->real_escape_string($_POST['requirements']);
-        $salary = $conn->real_escape_string($_POST['salary']);
-        $address = $conn->real_escape_string($_POST['address']);
-        
-        $sql = "INSERT INTO jobs (company, job, requirements, salary, address) VALUES (?, ?, ?, ?, ?)";
-        $stmt = $conn->prepare($sql);
-        $stmt->bind_param("sssss", $company, $job, $requirements, $salary, $address);
-        
-        if ($stmt->execute()) {
-            header('Location: dashboard.php?success=1');
-            exit();
-        } else {
-            header('Location: dashboard.php?error=1');
-            exit();
-        }
-        $stmt->close();
-    }
-}
-
-// Handle application status update
-if (isset($_POST['update_status'])) {
-    $application_id = (int)$_POST['application_id'];
-    $new_status = $conn->real_escape_string($_POST['status']);
-    $sql = "UPDATE job_applications SET status = ? WHERE id = ?";
-    $stmt = $conn->prepare($sql);
-    $stmt->bind_param("si", $new_status, $application_id);
-    if ($stmt->execute()) {
-        header('Location: dashboard.php?success=2');
-        exit();
-    }
-    $stmt->close();
-}
-
-// Add email notification function
-function sendInterviewNotification($to_email, $subject, $message) {
-    $headers = "MIME-Version: 1.0" . "\r\n";
-    $headers .= "Content-type:text/html;charset=UTF-8" . "\r\n";
-    $headers .= 'From: JPOST <noreply@jpost.com>' . "\r\n";
+// Handle job editing
+if (isset($_POST['edit_job'])) {
+    $job_id = (int)$_POST['edit_job'];
+    $job_title = $conn->real_escape_string($_POST['job_title']);
+    $company = $conn->real_escape_string($_POST['company']);
+    $requirements = $conn->real_escape_string($_POST['requirements']);
+    $salary = $conn->real_escape_string($_POST['salary']);
+    $address = $conn->real_escape_string($_POST['address']);
     
-    return mail($to_email, $subject, $message, $headers);
+    $update_sql = "UPDATE jobs SET job = ?, company = ?, requirements = ?, salary = ?, address = ? WHERE id = ?";
+    $update_stmt = $conn->prepare($update_sql);
+    $update_stmt->bind_param("sssssi", $job_title, $company, $requirements, $salary, $address, $job_id);
+    if ($update_stmt->execute()) {
+        header('Location: dashboard.php?success=updated');
+        exit();
+    }
+    $update_stmt->close();
 }
 
-// Handle interview status update with notifications
+// Handle interview status update
 if (isset($_POST['update_interview_status'])) {
-    $application_id = (int)$_POST['application_id'];
-    $new_status = $conn->real_escape_string($_POST['interview_status']);
-    $interview_date = $conn->real_escape_string($_POST['interview_date']);
-    $interview_time = $conn->real_escape_string($_POST['interview_time']);
-    $interview_type = $conn->real_escape_string($_POST['interview_type']);
-    $location = $conn->real_escape_string($_POST['interview_location']);
-    $duration = (int)$_POST['interview_duration'];
-    $interviewer = $conn->real_escape_string($_POST['interviewer']);
-    $notes = $conn->real_escape_string($_POST['interview_notes']);
-
-    // Get applicant email
-    $email_query = "SELECT u.email, u.username, j.job, j.company 
-                   FROM job_applications ja 
-                   JOIN users u ON ja.user_id = u.id 
-                   JOIN jobs j ON ja.job_id = j.id 
-                   WHERE ja.id = ?";
-    $email_stmt = $conn->prepare($email_query);
-    $email_stmt->bind_param("i", $application_id);
-    $email_stmt->execute();
-    $email_result = $email_stmt->get_result();
-    $applicant_info = $email_result->fetch_assoc();
-
-    // Check if interview status already exists
-    $check_stmt = $conn->prepare("SELECT id FROM interview_status WHERE application_id = ?");
-    $check_stmt->bind_param("i", $application_id);
-    $check_stmt->execute();
-    $result = $check_stmt->get_result();
-
-    if ($result->num_rows > 0) {
-        // Update existing interview status
-        $stmt = $conn->prepare("UPDATE interview_status SET 
-            status = ?, 
-            interview_date = ?, 
-            interview_time = ?, 
-            interview_type = ?,
-            location = ?,
-            duration = ?,
-            interviewer = ?,
-            notes = ? 
-            WHERE application_id = ?");
-        $stmt->bind_param("sssssisis", $new_status, $interview_date, $interview_time, $interview_type, $location, $duration, $interviewer, $notes, $application_id);
-    } else {
-        // Insert new interview status
-        $stmt = $conn->prepare("INSERT INTO interview_status 
-            (application_id, status, interview_date, interview_time, interview_type, location, duration, interviewer, notes) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
-        $stmt->bind_param("isssssiss", $application_id, $new_status, $interview_date, $interview_time, $interview_type, $location, $duration, $interviewer, $notes);
-    }
-
-    if ($stmt->execute()) {
-        // Send email notification
-        if ($applicant_info && $applicant_info['email']) {
-            $email_subject = "Interview Update - " . $applicant_info['job'];
-            $email_message = "
-                <html>
-                <body style='font-family: Arial, sans-serif; line-height: 1.6; color: #333;'>
-                    <h2>Interview Update</h2>
-                    <p>Dear " . htmlspecialchars($applicant_info['username']) . ",</p>
-                    <p>Your interview status for the position of <strong>" . htmlspecialchars($applicant_info['job']) . "</strong> at <strong>" . htmlspecialchars($applicant_info['company']) . "</strong> has been updated.</p>
-                    <div style='background: #f5f5f5; padding: 15px; border-radius: 5px; margin: 15px 0;'>
-                        <p><strong>Status:</strong> " . htmlspecialchars($new_status) . "</p>
-                        <p><strong>Date:</strong> " . htmlspecialchars($interview_date) . "</p>
-                        <p><strong>Time:</strong> " . htmlspecialchars($interview_time) . "</p>
-                        <p><strong>Type:</strong> " . htmlspecialchars($interview_type) . "</p>
-                        <p><strong>Duration:</strong> " . htmlspecialchars($duration) . " minutes</p>
-                        " . ($location ? "<p><strong>Location/Link:</strong> " . htmlspecialchars($location) . "</p>" : "") . "
-                        " . ($interviewer ? "<p><strong>Interviewer:</strong> " . htmlspecialchars($interviewer) . "</p>" : "") . "
-                        " . ($notes ? "<p><strong>Notes:</strong><br>" . nl2br(htmlspecialchars($notes)) . "</p>" : "") . "
-                    </div>
-                    <p>Please make sure to prepare accordingly and arrive on time.</p>
-                    <p>Best regards,<br>JPOST Team</p>
-                </body>
-                </html>";
-
-            sendInterviewNotification($applicant_info['email'], $email_subject, $email_message);
-        }
-        header('Location: dashboard.php?success=3');
-        exit();
-    }
-    $stmt->close();
-}
-
-// Handle interview feedback submission
-if (isset($_POST['submit_feedback'])) {
-    $interview_id = (int)$_POST['interview_id'];
-    $technical_rating = (int)$_POST['technical_rating'];
-    $communication_rating = (int)$_POST['communication_rating'];
-    $experience_rating = (int)$_POST['experience_rating'];
-    $overall_rating = (int)$_POST['overall_rating'];
-    $strengths = $conn->real_escape_string($_POST['strengths']);
-    $weaknesses = $conn->real_escape_string($_POST['weaknesses']);
-    $feedback_notes = $conn->real_escape_string($_POST['feedback_notes']);
-
-    $stmt = $conn->prepare("INSERT INTO interview_feedback 
-        (interview_id, technical_rating, communication_rating, experience_rating, overall_rating, strengths, weaknesses, feedback_notes) 
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
-    $stmt->bind_param("iiiiisss", $interview_id, $technical_rating, $communication_rating, $experience_rating, $overall_rating, $strengths, $weaknesses, $feedback_notes);
+    $applicant_id = (int)$_POST['applicant_id'];
+    $interview_status = $conn->real_escape_string($_POST['interview_status']);
     
-    if ($stmt->execute()) {
-        header('Location: dashboard.php?success=4');
+    $update_sql = "UPDATE applicants SET status2 = ? WHERE id = ?";
+    $update_stmt = $conn->prepare($update_sql);
+    $update_stmt->bind_param("si", $interview_status, $applicant_id);
+    
+    if ($update_stmt->execute()) {
+        header('Location: dashboard.php?success=interview_updated');
         exit();
     }
-    $stmt->close();
+    $update_stmt->close();
 }
 
-// Add search functionality
-$search_query = '';
-$search_type = 'all'; // Default to searching all
+// Fetch employer's posted jobs
+$jobs_sql = "SELECT * FROM jobs ORDER BY created_at DESC";
+$jobs_stmt = $conn->prepare($jobs_sql);
+$jobs_stmt->execute();
+$jobs_result = $jobs_stmt->get_result();
 
-if (isset($_GET['search']) && !empty($_GET['search'])) {
-    $search = $conn->real_escape_string($_GET['search']);
-    $search_query = htmlspecialchars($_GET['search']);
-}
-
-if (isset($_GET['type']) && !empty($_GET['type'])) {
-    $search_type = $conn->real_escape_string($_GET['type']);
-}
-
-// Modify the jobs query to include search
-$jobs_query = "SELECT * FROM jobs WHERE 1=1";
-if (!empty($search_query)) {
-    if ($search_type === 'all' || $search_type === 'jobs') {
-        $jobs_query .= " AND (job LIKE '%$search%' OR company LIKE '%$search%' OR requirements LIKE '%$search%')";
-    }
-}
-$jobs_query .= " ORDER BY created_at DESC";
-$jobs = $conn->query($jobs_query);
-
-// Modify the applications query to include search
-$applications_sql = "SELECT ja.*, j.job, j.company, u.username 
-                    FROM job_applications ja 
-                    INNER JOIN jobs j ON ja.job_id = j.id 
-                    INNER JOIN users u ON ja.user_id = u.id 
-                    WHERE 1=1";
-if (!empty($search_query)) {
-    if ($search_type === 'all' || $search_type === 'applications') {
-        $applications_sql .= " AND (j.job LIKE '%$search%' OR j.company LIKE '%$search%' OR u.username LIKE '%$search%')";
-    }
-}
-$applications_sql .= " ORDER BY ja.created_at DESC";
-$applications = $conn->query($applications_sql);
-
-// Handle logout
-if (isset($_GET['logout'])) {
-    session_start();
-    session_destroy();
-    header('Location: login.php');
-    exit();
-}
-
-// After fetching jobs
-echo '<div style="color:yellow;background:#222;padding:8px;">Jobs found: ' . ($jobs ? $jobs->num_rows : 0) . '</div>';
+// Fetch all applicants for employer's jobs
+$applicants_sql = "SELECT a.*, j.job as job_title, j.company 
+                  FROM applicants a 
+                  JOIN jobs j ON a.job_id = j.id 
+                  WHERE a.status1 IN ('In Review', 'In Process', 'Interview', 'On Demand', 'Accepted', 'Cancelled', 'In Waiting')
+                  ORDER BY a.created_at DESC";
+$applicants_stmt = $conn->prepare($applicants_sql);
+$applicants_stmt->execute();
+$applicants_result = $applicants_stmt->get_result();
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -346,7 +106,7 @@ echo '<div style="color:yellow;background:#222;padding:8px;">Jobs found: ' . ($j
     <title>Employer Dashboard - JPOST</title>
     <style>
         body {
-            background: #181818;
+            background: #181a1b;
             color: #fff;
             font-family: 'Segoe UI', Arial, sans-serif;
             margin: 0;
@@ -383,43 +143,25 @@ echo '<div style="color:yellow;background:#222;padding:8px;">Jobs found: ' . ($j
             color: #4fc3f7;
             text-decoration: underline;
         }
-        .navbar .search {
-            display: flex;
-            align-items: center;
-            background: #eee;
-            border-radius: 20px;
-            padding: 4px 12px;
-        }
-        .navbar .search input {
-            background: transparent;
+        .navbar .logout-btn {
+            background: #f44336;
+            color: #fff;
             border: none;
-            color: #222;
-            outline: none;
-            padding: 6px 8px;
-            font-size: 1em;
-            width: 200px;
-        }
-        .navbar .search button {
-            background: none;
-            border: none;
-            color: #222;
+            padding: 8px 16px;
+            border-radius: 4px;
             cursor: pointer;
-            font-size: 1.2em;
+            font-weight: bold;
         }
-        .navbar .settings {
-            margin-left: 18px;
-            font-size: 1.7em;
-            color: #4fc3f7;
-            cursor: pointer;
+        .navbar .logout-btn:hover {
+            background: #d32f2f;
         }
         .dashboard-container {
             margin: 48px auto 0 auto;
             width: 95%;
             max-width: 1000px;
             min-width: 320px;
-            background: #181818;
+            background: transparent;
             border-radius: 16px;
-            border: 2px solid #fff;
             padding: 32px 0 32px 0;
             min-height: 480px;
             position: relative;
@@ -460,7 +202,7 @@ echo '<div style="color:yellow;background:#222;padding:8px;">Jobs found: ' . ($j
         }
         .job-card .post-btn {
             width: 70%;
-            background: #5bbcff;
+            background: #4fc3f7;
             color: #222;
             font-weight: bold;
             border: none;
@@ -469,11 +211,15 @@ echo '<div style="color:yellow;background:#222;padding:8px;">Jobs found: ' . ($j
             font-size: 1.1em;
             margin: 10px 0 0 0;
             cursor: pointer;
-            transition: background 0.2s;
+            transition: all 0.2s;
+            display: inline-block;
+            text-decoration: none;
         }
         .job-card .post-btn:hover {
             background: #0288d1;
             color: #fff;
+            transform: translateY(-2px);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
         }
         .dashboard-actions {
             display: flex;
@@ -491,32 +237,86 @@ echo '<div style="color:yellow;background:#222;padding:8px;">Jobs found: ' . ($j
             cursor: pointer;
             margin-bottom: 0;
             transition: filter 0.15s;
+            text-align: center;
+            display: block;
         }
         .dashboard-actions .candidate-list { background: #7ed957; color: #222; }
         .dashboard-actions .resume { background: #ffb366; color: #222; }
         .dashboard-actions .interview { background: #f7f7b6; color: #222; }
         .dashboard-actions .recruit { background: #008080; color: #fff; }
         .dashboard-actions button:hover { filter: brightness(0.95); }
-        .footer {
-            width: 100%;
-            background: #181818;
-            border-top: 2px solid #333;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            padding: 18px 0 10px 0;
-            position: static;
-            left: 0;
-            bottom: 0;
-        }
-        .footer a {
-            color: #fff;
-            text-decoration: underline;
-            margin: 0 18px;
-            font-size: 1em;
-        }
-        .footer a:hover {
+        .section-title {
             color: #4fc3f7;
+            font-size: 1.3em;
+            font-weight: bold;
+            margin: 32px 0 12px 0;
+        }
+        .posted-jobs {
+            width: 95%;
+            max-width: 1100px;
+            margin: 0 auto 32px auto;
+        }
+        .jobs-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 18px;
+        }
+        .job-tile {
+            background: #fff;
+            color: #222;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px #0002;
+            padding: 18px 22px;
+            min-width: 220px;
+            max-width: 320px;
+            flex: 1;
+            position: relative;
+            margin-bottom: 12px;
+        }
+        .job-tile .job-title {
+            color: #1ca7ec;
+            font-weight: bold;
+            font-size: 1.1em;
+            margin-bottom: 6px;
+        }
+        .job-tile .job-info {
+            font-size: 0.98em;
+            margin-bottom: 8px;
+        }
+        .job-tile .job-info b {
+            font-weight: 600;
+        }
+        .job-tile .job-actions {
+            display: flex;
+            gap: 8px;
+            margin-top: 10px;
+        }
+        .job-tile .edit-btn {
+            background: #4fc3f7;
+            color: #222;
+            border: none;
+            border-radius: 6px;
+            padding: 6px 14px;
+            cursor: pointer;
+            font-weight: bold;
+            flex: 1;
+        }
+        .job-tile .edit-btn:hover {
+            background: #0288d1;
+            color: #fff;
+        }
+        .job-tile .delete-btn {
+            background: #f44336;
+            color: #fff;
+            border: none;
+            border-radius: 6px;
+            padding: 6px 14px;
+            cursor: pointer;
+            font-weight: bold;
+            flex: 1;
+        }
+        .job-tile .delete-btn:hover {
+            background: #b71c1c;
         }
         @media (max-width: 900px) {
             .dashboard-container {
@@ -533,179 +333,283 @@ echo '<div style="color:yellow;background:#222;padding:8px;">Jobs found: ' . ($j
                 min-width: 90vw;
                 max-width: 98vw;
             }
+            .posted-jobs {
+                width: 98vw;
+            }
         }
-       
+        
+        /* Add styles for the post job modal */
         .modal {
             display: none;
             position: fixed;
-            z-index: 1000;
-            left: 0;
             top: 0;
+            left: 0;
             width: 100%;
             height: 100%;
-            overflow: auto;
-            background-color: rgba(0,0,0,0.5);
+            background: rgba(0,0,0,0.7);
+            z-index: 1000;
         }
         .modal-content {
-            background-color: #222;
-            margin: 8% auto;
-            padding: 32px 24px 24px 24px;
-            border: 1px solid #888;
-            width: 340px;
+            background: #232a34;
+            padding: 24px;
             border-radius: 12px;
+            width: 90%;
+            max-width: 500px;
+            margin: 48px auto;
             color: #fff;
-            position: relative;
-            box-shadow: 0 4px 24px rgba(0,0,0,0.18);
         }
-        .close {
-            color: #aaa;
-            position: absolute;
-            top: 10px;
-            right: 18px;
-            font-size: 28px;
-            font-weight: bold;
-            cursor: pointer;
+        .modal-content h2 {
+            margin-top: 0;
+            color: #4fc3f7;
         }
-        .close:hover {
+        .modal-content input,
+        .modal-content textarea {
+            width: 100%;
+            padding: 8px;
+            border-radius: 4px;
+            border: 1px solid #444;
+            background: #2a323d;
             color: #fff;
+            margin-bottom: 16px;
+        }
+        .modal-content textarea {
+            min-height: 100px;
         }
         .modal-content label {
             display: block;
-            margin-bottom: 6px;
-            margin-top: 12px;
-            font-size: 1em;
-        }
-        .modal-content input[type="text"],
-        .modal-content textarea {
-            width: 100%;
-            padding: 8px 10px;
-            border-radius: 8px;
-            border: none;
             margin-bottom: 8px;
-            font-size: 1em;
-            background: #fff;
-            color: #222;
         }
-        .modal-content button[type="submit"] {
-            width: 100%;
-            background: #5bbcff;
-            color: #222;
-            font-weight: bold;
-            border: none;
-            border-radius: 8px;
-            padding: 12px 0;
-            font-size: 1.1em;
-            margin: 10px 0 0 0;
-            cursor: pointer;
-            transition: background 0.2s;
-        }
-        .modal-content button[type="submit"]:hover {
-            background: #0288d1;
-            color: #fff;
-        }
-        .search-container {
+        .modal-buttons {
             display: flex;
-            align-items: center;
-            background: #fff;
-            border-radius: 20px;
-            padding: 4px 12px;
-            width: 300px;
+            gap: 12px;
         }
-        .search-container input {
-            background: transparent;
+        .modal-buttons button {
+            flex: 1;
+            padding: 12px;
             border: none;
-            color: #222;
-            outline: none;
-            padding: 6px 8px;
-            font-size: 1em;
-            width: 100%;
-        }
-        .search-container button {
-            background: none;
-            border: none;
-            color: #222;
-            cursor: pointer;
-            font-size: 1.2em;
-            padding: 0 8px;
-        }
-        .logout-btn {
-            background: #f44336;
-            color: #fff;
-            border: none;
-            padding: 8px 16px;
             border-radius: 4px;
             cursor: pointer;
-            margin-left: 16px;
-            font-weight: bold;
         }
-        .logout-btn:hover {
-            background: #d32f2f;
+        .success-message {
+            background: #4caf50;
+            color: white;
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        /* Candidate List Styles */
+        .candidates-list {
+            max-height: 600px;
+            overflow-y: auto;
+            margin: 20px 0;
         }
         .candidate-card {
-            background: #fff;
-            color: #222;
+            background: #2a323d;
             border-radius: 8px;
             padding: 16px;
             margin-bottom: 16px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
         }
-        .candidate-card h3 {
+        .candidate-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+        .candidate-header h3 {
+            margin: 0;
             color: #4fc3f7;
-            margin: 0 0 12px 0;
         }
-        .candidate-info {
-            margin-bottom: 8px;
+        .candidate-status {
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 0.9em;
+            font-weight: bold;
+        }
+        .candidate-status.pending {
+            background: #ffd700;
+            color: #000;
+        }
+        .candidate-status.interviewed {
+            background: #4fc3f7;
+            color: #000;
+        }
+        .candidate-status.hired {
+            background: #4caf50;
+            color: #fff;
+        }
+        .candidate-status.rejected {
+            background: #f44336;
+            color: #fff;
+        }
+        .candidate-details {
+            margin-bottom: 16px;
+        }
+        .candidate-details p {
+            margin: 8px 0;
+            color: #fff;
         }
         .candidate-actions {
             display: flex;
-            gap: 8px;
-            margin-top: 12px;
+            gap: 12px;
         }
-        .candidate-actions button {
-            padding: 6px 12px;
+        .view-resume-btn, .update-status-btn {
+            padding: 8px 16px;
             border: none;
             border-radius: 4px;
             cursor: pointer;
             font-weight: bold;
+            text-decoration: none;
+            text-align: center;
+            flex: 1;
         }
-        .view-resume {
+        .view-resume-btn {
             background: #4fc3f7;
+            color: #222;
+        }
+        .update-status-btn {
+            background: #666;
             color: #fff;
         }
-        .view-resume:hover {
+        .view-resume-btn:hover {
             background: #0288d1;
+            color: #fff;
         }
-        .status-badge {
-            padding: 4px 8px;
-            border-radius: 4px;
+        .update-status-btn:hover {
+            background: #444;
+        }
+        .no-candidates {
+            text-align: center;
+            padding: 32px;
+            color: #666;
+            font-size: 1.1em;
+        }
+
+        /* Updated Candidate List Styles */
+        .status-container {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .candidate-status {
+            padding: 4px 12px;
+            border-radius: 12px;
             font-size: 0.9em;
             font-weight: bold;
         }
-        .status-pending { background: #ffd700; color: #000; }
-        .status-accepted { background: #4caf50; color: #fff; }
-        .status-rejected { background: #f44336; color: #fff; }
-        .rating {
+        .candidate-status.in-review {
+            background: #ffd700;
+            color: #000;
+        }
+        .candidate-status.in-process {
+            background: #4fc3f7;
+            color: #000;
+        }
+        .candidate-status.interview {
+            background: #9c27b0;
+            color: #fff;
+        }
+        .candidate-status.on-demand {
+            background: #ff9800;
+            color: #000;
+        }
+        .candidate-status.accepted {
+            background: #4caf50;
+            color: #fff;
+        }
+        .candidate-status.cancelled {
+            background: #f44336;
+            color: #fff;
+        }
+        .candidate-status.in-waiting {
+            background: #607d8b;
+            color: #fff;
+        }
+        .candidate-status.secondary {
+            background: #666;
+            color: #fff;
+            font-size: 0.8em;
+        }
+
+        /* Interview Management Styles */
+        .interview-list {
+            max-height: 600px;
+            overflow-y: auto;
+            margin: 20px 0;
+        }
+        .interview-card {
+            background: #2a323d;
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+        .interview-header {
             display: flex;
-            flex-direction: row-reverse;
-            justify-content: flex-end;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
         }
-        .rating input {
-            display: none;
+        .interview-header h3 {
+            margin: 0;
+            color: #4fc3f7;
         }
-        .rating label {
+        .interview-status {
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 0.9em;
+            font-weight: bold;
+        }
+        .interview-status.pending {
+            background: #ffd700;
+            color: #000;
+        }
+        .interview-status.interviewed {
+            background: #4caf50;
+            color: #fff;
+        }
+        .interview-details {
+            margin-bottom: 16px;
+        }
+        .interview-details p {
+            margin: 8px 0;
+            color: #fff;
+        }
+        .interview-actions {
+            display: flex;
+            gap: 12px;
+        }
+        .status-form {
+            display: flex;
+            gap: 12px;
+            width: 100%;
+        }
+        .status-select {
+            flex: 1;
+            padding: 8px;
+            border-radius: 4px;
+            border: 1px solid #444;
+            background: #2a323d;
+            color: #fff;
+        }
+        .update-interview-btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            background: #4fc3f7;
+            color: #222;
             cursor: pointer;
-            font-size: 24px;
-            color: #ddd;
-            padding: 0 2px;
+            font-weight: bold;
         }
-        .rating input:checked ~ label,
-        .rating label:hover,
-        .rating label:hover ~ label {
-            color: #ffd700;
+        .update-interview-btn:hover {
+            background: #0288d1;
+            color: #fff;
         }
-        .rating label:hover,
-        .rating label:hover ~ label {
-            color: #ffd700;
+        .no-interviews {
+            text-align: center;
+            padding: 32px;
+            color: #666;
+            font-size: 1.1em;
         }
     </style>
 </head>
@@ -715,615 +619,307 @@ echo '<div style="color:yellow;background:#222;padding:8px;">Jobs found: ' . ($j
             <span style="font-size:1.2em; margin-right:4px;">&#128188;</span> JPOST
         </div>
         <nav>
-            <a href="index.php">Home</a>
-            <a href="explore.php">Explore</a>
-            <a href="account.php">Account</a>
-            <a href="dashboard.php" class="active">Dashboard</a>
+            <a href="#">Home</a>
+            <a href="#">Explore</a>
+            <a href="#">Account</a>
+            <a href="#" class="active">Dashboard</a>
         </nav>
-        <div style="display:flex; align-items:center;">
-            <form action="dashboard.php" method="GET" class="search">
-                <input type="text" name="search" placeholder="Search jobs or applications..." value="<?php echo htmlspecialchars($search_query); ?>">
-                <select name="type" style="background:transparent;border:none;color:#222;outline:none;margin-right:8px;">
-                    <option value="all" <?php echo $search_type === 'all' ? 'selected' : ''; ?>>All</option>
-                    <option value="jobs" <?php echo $search_type === 'jobs' ? 'selected' : ''; ?>>Jobs</option>
-                    <option value="applications" <?php echo $search_type === 'applications' ? 'selected' : ''; ?>>Applications</option>
-                </select>
-                <button type="submit">&#128269;</button>
-            </form>
-            <a href="logout.php" style="color:#fff; text-decoration:none; margin-left:18px; background:#f44336; padding:8px 16px; border-radius:4px;">Logout</a>
-        </div>
+        <a href="logout.php" class="logout-btn">Logout</a>
     </div>
     <div class="dashboard-container">
         <div class="job-card">
-            <img src="uploads/professional_woman.jpg" alt="Professional Woman" class="profile-image">
+            <img src="https://i.ibb.co/6bQ6Q0k/professional-woman.png" alt="Professional Woman" class="profile-image">
             <h2>Post a Job</h2>
             <div class="job-details">
                 <div>Fill in the details below to post a new job opening.</div>
             </div>
-            <button class="post-btn" id="openModalBtn">Post New Job</button>
+            <button type="button" class="post-btn" onclick="openPostModal()">Post New Job</button>
         </div>
         <div class="dashboard-actions">
-            <button class="candidate-list" onclick="showApplications()">Candidate List</button>
-            <button class="resume">Resume</button>
-            <button class="interview" onclick="showInterviews()">Interview</button>
-            <button class="recruit">Recruit</button>
+            <button type="button" class="candidate-list" onclick="openCandidateModal()">Candidate List</button>
+            <button type="button" class="resume">Resume</button>
+            <button type="button" class="interview" onclick="openInterviewModal()">Interview</button>
+            <button type="button" class="recruit">Recruit</button>
         </div>
     </div>
-    <!-- Applications List -->
-    <div id="applicationsList" style="width:95%;max-width:1000px;margin:32px auto 0 auto;display:none;">
-        <h2 style="color:#4fc3f7;text-align:left;margin-bottom:12px;">Job Applications</h2>
-        <?php if ($applications && $applications->num_rows > 0): ?>
-            <div style="display:flex;flex-wrap:wrap;gap:18px;">
-            <?php while($app = $applications->fetch_assoc()): 
-                // Get interview status
-                $interview_stmt = $conn->prepare("SELECT status, interview_date, interview_time, interview_type, location, duration, interviewer, notes, updated_at FROM interview_status WHERE application_id = ?");
-                $interview_stmt->bind_param("i", $app['id']);
-                $interview_stmt->execute();
-                $interview_result = $interview_stmt->get_result();
-                $interview = $interview_result->fetch_assoc();
-                $interview_status = $interview ? $interview['status'] : 'Pending';
-                
-                // Set status color and icon
-                $status_color = '#ff9800'; // Default orange for Pending
-                $status_icon = '⏳'; // Pending
-                if ($interview_status === 'Done') {
-                    $status_color = '#4caf50'; // Green
-                    $status_icon = '✓';
-                } elseif ($interview_status === 'Scheduled') {
-                    $status_color = '#2196f3'; // Blue
-                    $status_icon = '📅';
-                } elseif ($interview_status === 'Cancelled') {
-                    $status_color = '#f44336'; // Red
-                    $status_icon = '❌';
-                } elseif ($interview_status === 'Rescheduled') {
-                    $status_color = '#9c27b0'; // Purple
-                    $status_icon = '🔄';
-                }
-            ?>
-                <div style="background:#fff;color:#222;border-radius:8px;box-shadow:0 2px 8px #0002;padding:18px 22px;min-width:220px;max-width:320px;flex:1;position:relative;">
-                    <div style="font-size:1.2em;font-weight:bold;margin-bottom:8px;color:#4fc3f7;"><?php echo htmlspecialchars($app['job']); ?></div>
-                    <div><b>Applicant:</b> <?php echo htmlspecialchars($app['username']); ?></div>
-                    <div><b>Company:</b> <?php echo htmlspecialchars($app['company']); ?></div>
-                    <div><b>Status:</b> <span style="color: <?php echo $app['status'] === 'Accepted' ? '#4caf50' : ($app['status'] === 'Rejected' ? '#f44336' : '#ff9800'); ?>"><?php echo htmlspecialchars($app['status']); ?></span></div>
-                    <div style="margin-top:12px;padding:12px;background:#f5f5f5;border-radius:6px;border-left:4px solid <?php echo $status_color; ?>;">
-                        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
-                            <span style="font-size:1.2em;"><?php echo $status_icon; ?></span>
-                            <span style="color:<?php echo $status_color; ?>;font-weight:bold;"><?php echo htmlspecialchars($interview_status); ?></span>
-                            <?php if ($interview_status === 'Scheduled'): ?>
-                                <span style="font-size:0.9em;color:#666;margin-left:auto;">
-                                    <?php 
-                                        $interview_datetime = strtotime($interview['interview_date'] . ' ' . $interview['interview_time']);
-                                        $now = time();
-                                        $diff = $interview_datetime - $now;
-                                        if ($diff > 0) {
-                                            $days = floor($diff / (60 * 60 * 24));
-                                            $hours = floor(($diff % (60 * 60 * 24)) / (60 * 60));
-                                            echo "in " . ($days > 0 ? $days . "d " : "") . $hours . "h";
-                                        }
-                                    ?>
-                                </span>
-                            <?php endif; ?>
-                        </div>
-                        <?php if ($interview): ?>
-                            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;">
-                                <?php if ($interview['interview_date']): ?>
-                                    <div><b>Date:</b> <?php echo htmlspecialchars($interview['interview_date']); ?></div>
-                                <?php endif; ?>
-                                <?php if ($interview['interview_time']): ?>
-                                    <div><b>Time:</b> <?php echo htmlspecialchars($interview['interview_time']); ?></div>
-                                <?php endif; ?>
-                                <?php if ($interview['duration']): ?>
-                                    <div><b>Duration:</b> <?php echo htmlspecialchars($interview['duration']); ?> minutes</div>
-                                <?php endif; ?>
-                                <?php if ($interview['interview_type']): ?>
-                                    <div><b>Type:</b> <?php echo htmlspecialchars($interview['interview_type']); ?></div>
-                                <?php endif; ?>
-                                <?php if ($interview['location']): ?>
-                                    <div><b>Location:</b> <?php echo htmlspecialchars($interview['location']); ?></div>
-                                <?php endif; ?>
-                                <?php if ($interview['interviewer']): ?>
-                                    <div><b>Interviewer:</b> <?php echo htmlspecialchars($interview['interviewer']); ?></div>
-                                <?php endif; ?>
-                            </div>
-                            <?php if ($interview['notes']): ?>
-                                <div style="margin-top:12px;padding:8px;background:#fff;border-radius:4px;"><b>Notes:</b><br><?php echo nl2br(htmlspecialchars($interview['notes'])); ?></div>
-                            <?php endif; ?>
-                            <?php if ($interview_status === 'Done' && !$feedback): ?>
-                                <div style="margin-top:12px;">
-                                    <button onclick="openFeedbackModal(<?php echo $interview['id']; ?>)" 
-                                            style="background:#4caf50;color:#fff;border:none;padding:6px 14px;border-radius:6px;cursor:pointer;font-weight:bold;">
-                                        Add Feedback
-                                    </button>
-                                </div>
-                            <?php endif; ?>
-                            <?php if ($feedback): ?>
-                                <div style="margin-top:12px;padding:12px;background:#fff;border-radius:4px;border-left:4px solid #4caf50;">
-                                    <h4 style="margin:0 0 8px 0;color:#4caf50;">Interview Feedback</h4>
-                                    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:8px;">
-                                        <div><b>Technical:</b> <?php echo str_repeat('★', $feedback['technical_rating']) . str_repeat('☆', 5 - $feedback['technical_rating']); ?></div>
-                                        <div><b>Communication:</b> <?php echo str_repeat('★', $feedback['communication_rating']) . str_repeat('☆', 5 - $feedback['communication_rating']); ?></div>
-                                        <div><b>Experience:</b> <?php echo str_repeat('★', $feedback['experience_rating']) . str_repeat('☆', 5 - $feedback['experience_rating']); ?></div>
-                                        <div><b>Overall:</b> <?php echo str_repeat('★', $feedback['overall_rating']) . str_repeat('☆', 5 - $feedback['overall_rating']); ?></div>
-                                    </div>
-                                    <?php if ($feedback['strengths']): ?>
-                                        <div><b>Strengths:</b><br><?php echo nl2br(htmlspecialchars($feedback['strengths'])); ?></div>
-                                    <?php endif; ?>
-                                    <?php if ($feedback['weaknesses']): ?>
-                                        <div><b>Areas for Improvement:</b><br><?php echo nl2br(htmlspecialchars($feedback['weaknesses'])); ?></div>
-                                    <?php endif; ?>
-                                    <?php if ($feedback['feedback_notes']): ?>
-                                        <div style="margin-top:8px;"><b>Additional Notes:</b><br><?php echo nl2br(htmlspecialchars($feedback['feedback_notes'])); ?></div>
-                                    <?php endif; ?>
-                                </div>
-                            <?php endif; ?>
-                            <div style="font-size:0.8em;color:#666;margin-top:8px;">Last updated: <?php echo htmlspecialchars($interview['updated_at']); ?></div>
-                        <?php endif; ?>
-                    </div>
-                    <div style="font-size:0.9em;color:#888;margin-top:8px;">Applied: <?php echo htmlspecialchars($app['created_at']); ?></div>
-                    <?php if ($app['status'] === 'Accepted'): ?>
-                        <div style="margin-top:12px;display:flex;gap:8px;">
-                            <button onclick="openInterviewModal(<?php echo $app['id']; ?>, '<?php echo htmlspecialchars($interview_status); ?>', '<?php echo htmlspecialchars($interview['interview_date'] ?? ''); ?>', '<?php echo htmlspecialchars($interview['interview_time'] ?? ''); ?>', '<?php echo htmlspecialchars($interview['interview_type'] ?? ''); ?>', '<?php echo htmlspecialchars($interview['location'] ?? ''); ?>', '<?php echo htmlspecialchars($interview['duration'] ?? ''); ?>', '<?php echo htmlspecialchars($interview['interviewer'] ?? ''); ?>', '<?php echo htmlspecialchars($interview['notes'] ?? ''); ?>');" 
-                                    style="background:#4fc3f7;color:#222;border:none;padding:6px 14px;border-radius:6px;cursor:pointer;font-weight:bold;">
-                                Update Interview
-                            </button>
-                        </div>
-                    <?php endif; ?>
-                </div>
-            <?php endwhile; ?>
-            </div>
-        <?php else: ?>
-            <div style="color:#ccc;text-align:center;padding:32px;background:#222;border-radius:8px;">
-                No applications received yet.
+    <div class="posted-jobs">
+        <div class="section-title">Your Posted Jobs</div>
+        <?php if (isset($_GET['success'])): ?>
+            <div class="success-message">
+                <?php 
+                if ($_GET['success'] === 'updated') echo 'Job updated successfully!';
+                if ($_GET['success'] === 'deleted') echo 'Job deleted successfully!';
+                if ($_GET['success'] === 'posted') echo 'Job posted successfully!';
+                if ($_GET['success'] === 'interview_updated') echo 'Interview status updated successfully!';
+                ?>
             </div>
         <?php endif; ?>
-    </div>
-    <!-- Posted Jobs List -->
-    <div style="width:95%;max-width:1000px;margin:32px auto 0 auto;">
-        <h2 style="color:#4fc3f7;text-align:left;margin-bottom:12px;">Your Posted Jobs</h2>
-        <?php if ($jobs && $jobs->num_rows > 0): ?>
-            <div style="display:flex;flex-wrap:wrap;gap:18px;">
-            <?php while($row = $jobs->fetch_assoc()): ?>
-                <div style="background:#fff;color:#222;border-radius:8px;box-shadow:0 2px 8px #0002;padding:18px 22px;min-width:220px;max-width:320px;flex:1;position:relative;">
-                    <div style="font-size:1.2em;font-weight:bold;margin-bottom:8px;color:#4fc3f7;"><?php echo htmlspecialchars($row['job']); ?></div>
-                    <div><b>Company:</b> <?php echo htmlspecialchars($row['company']); ?></div>
-                    <div><b>Requirements:</b> <?php echo nl2br(htmlspecialchars($row['requirements'])); ?></div>
-                    <div><b>Salary:</b> <?php echo htmlspecialchars($row['salary']); ?></div>
-                    <div><b>Address:</b> <?php echo htmlspecialchars($row['address']); ?></div>
-                    <div style="font-size:0.9em;color:#888;margin-top:8px;">Posted: <?php echo htmlspecialchars($row['created_at']); ?></div>
-                    <div style="margin-top:12px;display:flex;gap:8px;">
-                        <button class="edit-btn" style="background:#4fc3f7;color:#222;border:none;padding:6px 14px;border-radius:6px;cursor:pointer;font-weight:bold;" 
-                            onclick="openEditModal(<?php echo $row['id']; ?>, '<?php echo htmlspecialchars(addslashes($row['company'])); ?>', '<?php echo htmlspecialchars(addslashes($row['job'])); ?>', '<?php echo htmlspecialchars(addslashes($row['requirements'])); ?>', '<?php echo htmlspecialchars(addslashes($row['salary'])); ?>', '<?php echo htmlspecialchars(addslashes($row['address'])); ?>'); return false;">Edit</button>
-                        <a href="?delete=<?php echo $row['id']; ?>" onclick="return confirm('Delete this job post?');" style="background:#f44336;color:#fff;border:none;padding:7px 14px;border-radius:6px;cursor:pointer;font-weight:bold;text-decoration:none;">Delete</a>
+        <div class="jobs-grid">
+            <?php if ($jobs_result->num_rows > 0): ?>
+                <?php while ($job = $jobs_result->fetch_assoc()): ?>
+                    <div class="job-tile">
+                        <div class="job-title"><?php echo htmlspecialchars($job['job']); ?></div>
+                        <div class="job-info"><b>Company:</b> <?php echo htmlspecialchars($job['company']); ?></div>
+                        <div class="job-info"><b>Requirements:</b> <?php echo htmlspecialchars($job['requirements']); ?></div>
+                        <div class="job-info"><b>Salary:</b> <?php echo htmlspecialchars($job['salary']); ?></div>
+                        <div class="job-info"><b>Address:</b> <?php echo htmlspecialchars($job['address']); ?></div>
+                        <div class="job-info"><b>Posted:</b> <?php echo date('Y-m-d H:i:s', strtotime($job['created_at'])); ?></div>
+                        <div class="job-actions">
+                            <button class="edit-btn" onclick="openEditModal(<?php echo $job['id']; ?>, '<?php echo htmlspecialchars($job['job']); ?>', '<?php echo htmlspecialchars($job['company']); ?>', '<?php echo htmlspecialchars($job['requirements']); ?>', '<?php echo htmlspecialchars($job['salary']); ?>', '<?php echo htmlspecialchars($job['address']); ?>')">Edit</button>
+                            <form method="POST" style="display:inline;" onsubmit="return confirm('Are you sure you want to delete this job posting?');">
+                                <input type="hidden" name="delete_job" value="<?php echo $job['id']; ?>">
+                                <button type="submit" class="delete-btn">Delete</button>
+                            </form>
+                        </div>
                     </div>
+                <?php endwhile; ?>
+            <?php else: ?>
+                <div style="text-align: center; width: 100%; padding: 20px; color: #666;">
+                    No jobs posted yet. Click "Post New Job" to create your first job posting.
                 </div>
-            <?php endwhile; ?>
-            </div>
-        <?php else: ?>
-            <div style="color:#ccc;text-align:center;padding:32px;background:#222;border-radius:8px;">
-                No jobs posted yet. Click "Post New Job" to create your first job posting.
-            </div>
-        <?php endif; ?>
+            <?php endif; ?>
+        </div>
     </div>
-    <div class="footer">
-        <a href="#">Terms and Condition</a>
-        <a href="#">Security & Privacy</a>
-        <a href="#">About</a>
-        <a href="#">Report</a>
-    </div>
-    <!-- Modal for Job Post -->
+
+    <!-- Post New Job Modal -->
     <div id="postModal" class="modal">
         <div class="modal-content">
-            <span class="close" id="closeModalBtn">&times;</span>
-            <h2 id="modalTitle" style="text-align:center; margin-bottom: 18px;">Create Job Post</h2>
-            <?php if (isset($_GET['success'])): ?>
-                <div style="background: #4caf50; color: white; padding: 10px; border-radius: 4px; margin-bottom: 15px;">
-                    Job posted successfully!
+            <h2>Post New Job</h2>
+            <form method="POST" id="postForm">
+                <div>
+                    <label for="job_title">Job Title</label>
+                    <input type="text" id="job_title" name="job_title" required>
                 </div>
-            <?php endif; ?>
-            <?php if (isset($_GET['error'])): ?>
-                <div style="background: #f44336; color: white; padding: 10px; border-radius: 4px; margin-bottom: 15px;">
-                    Error posting job. Please try again.
+                <div>
+                    <label for="company">Company</label>
+                    <input type="text" id="company" name="company" required>
                 </div>
-            <?php endif; ?>
-            <form id="jobPostForm" method="POST" autocomplete="off">
-                <input type="hidden" id="edit_id" name="edit_id" value="">
-                <label for="company">Company</label>
-                <input type="text" id="company" name="company" required>
-                <label for="job">Job Title</label>
-                <input type="text" id="job" name="job" required>
-                <label for="requirements">Requirements</label>
-                <textarea id="requirements" name="requirements" rows="2" required></textarea>
-                <label for="salary">Salary</label>
-                <input type="text" id="salary" name="salary" required>
-                <label for="address">Address</label>
-                <input type="text" id="address" name="address" required>
-                <button type="submit">Save</button>
+                <div>
+                    <label for="requirements">Requirements</label>
+                    <textarea id="requirements" name="requirements" required></textarea>
+                </div>
+                <div>
+                    <label for="salary">Salary</label>
+                    <input type="text" id="salary" name="salary" required>
+                </div>
+                <div>
+                    <label for="address">Address</label>
+                    <input type="text" id="address" name="address" required>
+                </div>
+                <div class="modal-buttons">
+                    <button type="submit" name="post_new_job" style="background: #4fc3f7; color: #222;">Post Job</button>
+                    <button type="button" onclick="closePostModal()" style="background: #666; color: #fff;">Cancel</button>
+                </div>
             </form>
         </div>
     </div>
-    <!-- Add Interview Modal -->
+
+    <!-- Edit Job Modal -->
+    <div id="editModal" class="modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 1000;">
+        <div class="modal-content" style="background: #232a34; padding: 24px; border-radius: 12px; width: 90%; max-width: 500px; margin: 48px auto; color: #fff;">
+            <h2 style="margin-top: 0; color: #4fc3f7;">Edit Job</h2>
+            <form method="POST" id="editForm">
+                <input type="hidden" name="edit_job" id="edit_job_id">
+                <div style="margin-bottom: 16px;">
+                    <label style="display: block; margin-bottom: 8px;">Job Title</label>
+                    <input type="text" name="job_title" id="edit_job_title" required style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #444; background: #2a323d; color: #fff;">
+                </div>
+                <div style="margin-bottom: 16px;">
+                    <label style="display: block; margin-bottom: 8px;">Company</label>
+                    <input type="text" name="company" id="edit_company" required style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #444; background: #2a323d; color: #fff;">
+                </div>
+                <div style="margin-bottom: 16px;">
+                    <label style="display: block; margin-bottom: 8px;">Requirements</label>
+                    <textarea name="requirements" id="edit_requirements" required style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #444; background: #2a323d; color: #fff; min-height: 100px;"></textarea>
+                </div>
+                <div style="margin-bottom: 16px;">
+                    <label style="display: block; margin-bottom: 8px;">Salary</label>
+                    <input type="text" name="salary" id="edit_salary" required style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #444; background: #2a323d; color: #fff;">
+                </div>
+                <div style="margin-bottom: 16px;">
+                    <label style="display: block; margin-bottom: 8px;">Address</label>
+                    <input type="text" name="address" id="edit_address" required style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #444; background: #2a323d; color: #fff;">
+                </div>
+                <div style="display: flex; gap: 12px;">
+                    <button type="submit" style="flex: 1; padding: 12px; background: #4fc3f7; color: #222; border: none; border-radius: 4px; cursor: pointer;">Save Changes</button>
+                    <button type="button" onclick="closeEditModal()" style="flex: 1; padding: 12px; background: #666; color: #fff; border: none; border-radius: 4px; cursor: pointer;">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Candidate List Modal -->
+    <div id="candidateModal" class="modal">
+        <div class="modal-content" style="max-width: 800px;">
+            <h2>Candidate List</h2>
+            <div class="candidates-list">
+                <?php if ($applicants_result->num_rows > 0): ?>
+                    <?php while ($applicant = $applicants_result->fetch_assoc()): ?>
+                        <div class="candidate-card">
+                            <div class="candidate-header">
+                                <h3><?php echo htmlspecialchars($applicant['name']); ?></h3>
+                                <div class="status-container">
+                                    <span class="candidate-status <?php echo strtolower(str_replace(' ', '-', $applicant['status1'])); ?>">
+                                        <?php echo htmlspecialchars($applicant['status1']); ?>
+                                    </span>
+                                    <?php if (!empty($applicant['status2'])): ?>
+                                        <span class="candidate-status secondary">
+                                            <?php echo htmlspecialchars($applicant['status2']); ?>
+                                        </span>
+                                    <?php endif; ?>
+                                    <?php if (!empty($applicant['status3'])): ?>
+                                        <span class="candidate-status secondary">
+                                            <?php echo htmlspecialchars($applicant['status3']); ?>
+                                        </span>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+                            <div class="candidate-details">
+                                <p><strong>Applied for:</strong> <?php echo htmlspecialchars($applicant['job_title']); ?></p>
+                                <p><strong>Company:</strong> <?php echo htmlspecialchars($applicant['company']); ?></p>
+                                <p><strong>Email:</strong> <?php echo htmlspecialchars($applicant['email']); ?></p>
+                                <p><strong>Phone:</strong> <?php echo htmlspecialchars($applicant['phone']); ?></p>
+                                <p><strong>Applied on:</strong> <?php echo date('Y-m-d H:i:s', strtotime($applicant['created_at'])); ?></p>
+                            </div>
+                            <div class="candidate-actions">
+                                <?php if (!empty($applicant['resume_url'])): ?>
+                                    <a href="<?php echo htmlspecialchars($applicant['resume_url']); ?>" target="_blank" class="view-resume-btn">View Resume</a>
+                                <?php endif; ?>
+                                <button onclick="updateStatus(<?php echo $applicant['id']; ?>, 'status1')" class="update-status-btn">Update Status</button>
+                            </div>
+                        </div>
+                    <?php endwhile; ?>
+                <?php else: ?>
+                    <div class="no-candidates">
+                        No candidates have applied yet.
+                    </div>
+                <?php endif; ?>
+            </div>
+            <div class="modal-buttons">
+                <button type="button" onclick="closeCandidateModal()" style="background: #666; color: #fff;">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Interview Management Modal -->
     <div id="interviewModal" class="modal">
-        <div class="modal-content">
-            <span class="close" id="closeInterviewModal">&times;</span>
-            <h2 style="text-align:center; margin-bottom: 18px;">Update Interview Status</h2>
-            <form method="POST" id="interviewForm">
-                <input type="hidden" name="application_id" id="interview_application_id">
-                <input type="hidden" name="update_interview_status" value="1">
-                
-                <label for="interview_status">Interview Status</label>
-                <select id="interview_status" name="interview_status" required style="width:100%;padding:8px;border-radius:8px;margin-bottom:12px;" onchange="updateFormFields()">
-                    <option value="Pending">⏳ Pending</option>
-                    <option value="Scheduled">📅 Scheduled</option>
-                    <option value="Done">✓ Done</option>
-                    <option value="Cancelled">❌ Cancelled</option>
-                    <option value="Rescheduled">🔄 Rescheduled</option>
-                </select>
-                
-                <div id="scheduledFields">
-                    <label for="interview_type">Interview Type</label>
-                    <select id="interview_type" name="interview_type" required style="width:100%;padding:8px;border-radius:8px;margin-bottom:12px;">
-                        <option value="In-Person">👥 In-Person</option>
-                        <option value="Online">💻 Online</option>
-                        <option value="Phone">📞 Phone</option>
-                    </select>
-                    
-                    <div style="display:flex;gap:12px;margin-bottom:12px;">
-                        <div style="flex:1;">
-                            <label for="interview_date">Date</label>
-                            <input type="date" id="interview_date" name="interview_date" required style="width:100%;padding:8px;border-radius:8px;">
+        <div class="modal-content" style="max-width: 800px;">
+            <h2>Interview Management</h2>
+            <div class="interview-list">
+                <?php 
+                // Reset the result pointer
+                $applicants_result->data_seek(0);
+                if ($applicants_result->num_rows > 0): 
+                ?>
+                    <?php while ($applicant = $applicants_result->fetch_assoc()): ?>
+                        <div class="interview-card">
+                            <div class="interview-header">
+                                <h3><?php echo htmlspecialchars($applicant['name']); ?></h3>
+                                <div class="status-container">
+                                    <span class="interview-status <?php echo strtolower(str_replace(' ', '-', $applicant['status2'] ?? 'pending')); ?>">
+                                        <?php echo htmlspecialchars($applicant['status2'] ?? 'Pending'); ?>
+                                    </span>
+                                </div>
+                            </div>
+                            <div class="interview-details">
+                                <p><strong>Position:</strong> <?php echo htmlspecialchars($applicant['job_title']); ?></p>
+                                <p><strong>Company:</strong> <?php echo htmlspecialchars($applicant['company']); ?></p>
+                                <p><strong>Contact:</strong> <?php echo htmlspecialchars($applicant['email']); ?> | <?php echo htmlspecialchars($applicant['phone']); ?></p>
+                            </div>
+                            <div class="interview-actions">
+                                <form method="POST" class="status-form">
+                                    <input type="hidden" name="applicant_id" value="<?php echo $applicant['id']; ?>">
+                                    <select name="interview_status" class="status-select">
+                                        <option value="Pending" <?php echo ($applicant['status2'] ?? '') === 'Pending' ? 'selected' : ''; ?>>Pending</option>
+                                        <option value="Interviewed" <?php echo ($applicant['status2'] ?? '') === 'Interviewed' ? 'selected' : ''; ?>>Interviewed</option>
+                                    </select>
+                                    <button type="submit" name="update_interview_status" class="update-interview-btn">Update Status</button>
+                                </form>
+                            </div>
                         </div>
-                        <div style="flex:1;">
-                            <label for="interview_time">Time</label>
-                            <input type="time" id="interview_time" name="interview_time" required style="width:100%;padding:8px;border-radius:8px;">
-                        </div>
+                    <?php endwhile; ?>
+                <?php else: ?>
+                    <div class="no-interviews">
+                        No candidates available for interview.
                     </div>
-                    
-                    <div style="display:flex;gap:12px;margin-bottom:12px;">
-                        <div style="flex:1;">
-                            <label for="interview_duration">Duration (minutes)</label>
-                            <input type="number" id="interview_duration" name="interview_duration" min="15" step="15" value="60" required style="width:100%;padding:8px;border-radius:8px;">
-                        </div>
-                        <div style="flex:1;">
-                            <label for="interviewer">Interviewer</label>
-                            <input type="text" id="interviewer" name="interviewer" placeholder="Interviewer name" style="width:100%;padding:8px;border-radius:8px;">
-                        </div>
-                    </div>
-                    
-                    <label for="interview_location">Location/Meeting Link</label>
-                    <input type="text" id="interview_location" name="interview_location" placeholder="Enter location or meeting link" style="width:100%;padding:8px;border-radius:8px;margin-bottom:12px;">
-                </div>
-                
-                <label for="interview_notes">Notes</label>
-                <textarea id="interview_notes" name="interview_notes" rows="3" placeholder="Add any additional notes about the interview" style="width:100%;padding:8px;border-radius:8px;margin-bottom:12px;"></textarea>
-                
-                <button type="submit" style="width:100%;background:#4fc3f7;color:#222;border:none;padding:12px;border-radius:8px;cursor:pointer;font-weight:bold;">Save Interview Status</button>
-            </form>
+                <?php endif; ?>
+            </div>
+            <div class="modal-buttons">
+                <button type="button" onclick="closeInterviewModal()" style="background: #666; color: #fff;">Close</button>
+            </div>
         </div>
     </div>
-    <!-- Add Feedback Modal -->
-    <div id="feedbackModal" class="modal">
-        <div class="modal-content">
-            <span class="close" id="closeFeedbackModal">&times;</span>
-            <h2 style="text-align:center; margin-bottom: 18px;">Interview Feedback</h2>
-            <form method="POST" id="feedbackForm">
-                <input type="hidden" name="interview_id" id="feedback_interview_id">
-                <input type="hidden" name="submit_feedback" value="1">
-                
-                <div style="margin-bottom:16px;">
-                    <label>Technical Skills</label>
-                    <div class="rating">
-                        <?php for($i = 1; $i <= 5; $i++): ?>
-                            <input type="radio" name="technical_rating" value="<?php echo $i; ?>" id="tech<?php echo $i; ?>" required>
-                            <label for="tech<?php echo $i; ?>">★</label>
-                        <?php endfor; ?>
-                    </div>
-                </div>
-                
-                <div style="margin-bottom:16px;">
-                    <label>Communication Skills</label>
-                    <div class="rating">
-                        <?php for($i = 1; $i <= 5; $i++): ?>
-                            <input type="radio" name="communication_rating" value="<?php echo $i; ?>" id="comm<?php echo $i; ?>" required>
-                            <label for="comm<?php echo $i; ?>">★</label>
-                        <?php endfor; ?>
-                    </div>
-                </div>
-                
-                <div style="margin-bottom:16px;">
-                    <label>Experience Level</label>
-                    <div class="rating">
-                        <?php for($i = 1; $i <= 5; $i++): ?>
-                            <input type="radio" name="experience_rating" value="<?php echo $i; ?>" id="exp<?php echo $i; ?>" required>
-                            <label for="exp<?php echo $i; ?>">★</label>
-                        <?php endfor; ?>
-                    </div>
-                </div>
-                
-                <div style="margin-bottom:16px;">
-                    <label>Overall Rating</label>
-                    <div class="rating">
-                        <?php for($i = 1; $i <= 5; $i++): ?>
-                            <input type="radio" name="overall_rating" value="<?php echo $i; ?>" id="overall<?php echo $i; ?>" required>
-                            <label for="overall<?php echo $i; ?>">★</label>
-                        <?php endfor; ?>
-                    </div>
-                </div>
-                
-                <label for="strengths">Key Strengths</label>
-                <textarea id="strengths" name="strengths" rows="2" placeholder="List the candidate's key strengths" style="width:100%;padding:8px;border-radius:8px;margin-bottom:12px;"></textarea>
-                
-                <label for="weaknesses">Areas for Improvement</label>
-                <textarea id="weaknesses" name="weaknesses" rows="2" placeholder="List areas where the candidate can improve" style="width:100%;padding:8px;border-radius:8px;margin-bottom:12px;"></textarea>
-                
-                <label for="feedback_notes">Additional Notes</label>
-                <textarea id="feedback_notes" name="feedback_notes" rows="3" placeholder="Add any additional feedback or observations" style="width:100%;padding:8px;border-radius:8px;margin-bottom:12px;"></textarea>
-                
-                <button type="submit" style="width:100%;background:#4caf50;color:#fff;border:none;padding:12px;border-radius:8px;cursor:pointer;font-weight:bold;">Submit Feedback</button>
-            </form>
-        </div>
-    </div>
-    <!-- Interview List -->
-    <div id="interviewList" style="width:95%;max-width:1000px;margin:32px auto 0 auto;display:none;">
-        <h2 style="color:#4fc3f7;text-align:left;margin-bottom:12px;">Interview Status</h2>
-        <?php
-        // Query to get all interviews with application and job details
-        $interviews_sql = "SELECT is.*, ja.id as application_id, ja.status as application_status, 
-                          j.job, j.company, u.username, u.email
-                          FROM interview_status is
-                          JOIN job_applications ja ON is.application_id = ja.id
-                          JOIN jobs j ON ja.job_id = j.id
-                          JOIN users u ON ja.user_id = u.id
-                          ORDER BY is.interview_date DESC, is.interview_time DESC";
-        $interviews = $conn->query($interviews_sql);
-        
-        if ($interviews && $interviews->num_rows > 0): ?>
-            <div style="display:flex;flex-wrap:wrap;gap:18px;">
-            <?php while($interview = $interviews->fetch_assoc()): 
-                // Set status color and icon
-                $status_color = '#ff9800'; // Default orange for Pending
-                $status_icon = '⏳'; // Pending
-                if ($interview['status'] === 'Done') {
-                    $status_color = '#4caf50'; // Green
-                    $status_icon = '✓';
-                } elseif ($interview['status'] === 'Scheduled') {
-                    $status_color = '#2196f3'; // Blue
-                    $status_icon = '📅';
-                } elseif ($interview['status'] === 'Cancelled') {
-                    $status_color = '#f44336'; // Red
-                    $status_icon = '❌';
-                } elseif ($interview['status'] === 'Rescheduled') {
-                    $status_color = '#9c27b0'; // Purple
-                    $status_icon = '🔄';
-                }
-            ?>
-                <div style="background:#fff;color:#222;border-radius:8px;box-shadow:0 2px 8px #0002;padding:18px 22px;min-width:220px;max-width:320px;flex:1;position:relative;">
-                    <div style="font-size:1.2em;font-weight:bold;margin-bottom:8px;color:#4fc3f7;"><?php echo htmlspecialchars($interview['job']); ?></div>
-                    <div><b>Applicant:</b> <?php echo htmlspecialchars($interview['username']); ?></div>
-                    <div><b>Company:</b> <?php echo htmlspecialchars($interview['company']); ?></div>
-                    <div style="margin-top:12px;padding:12px;background:#f5f5f5;border-radius:6px;border-left:4px solid <?php echo $status_color; ?>;">
-                        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
-                            <span style="font-size:1.2em;"><?php echo $status_icon; ?></span>
-                            <span style="color:<?php echo $status_color; ?>;font-weight:bold;"><?php echo htmlspecialchars($interview['status']); ?></span>
-                            <?php if ($interview['status'] === 'Scheduled'): ?>
-                                <span style="font-size:0.9em;color:#666;margin-left:auto;">
-                                    <?php 
-                                        $interview_datetime = strtotime($interview['interview_date'] . ' ' . $interview['interview_time']);
-                                        $now = time();
-                                        $diff = $interview_datetime - $now;
-                                        if ($diff > 0) {
-                                            $days = floor($diff / (60 * 60 * 24));
-                                            $hours = floor(($diff % (60 * 60 * 24)) / (60 * 60));
-                                            echo "in " . ($days > 0 ? $days . "d " : "") . $hours . "h";
-                                        }
-                                    ?>
-                                </span>
-                            <?php endif; ?>
-                        </div>
-                        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;">
-                            <?php if ($interview['interview_date']): ?>
-                                <div><b>Date:</b> <?php echo htmlspecialchars($interview['interview_date']); ?></div>
-                            <?php endif; ?>
-                            <?php if ($interview['interview_time']): ?>
-                                <div><b>Time:</b> <?php echo htmlspecialchars($interview['interview_time']); ?></div>
-                            <?php endif; ?>
-                            <?php if ($interview['duration']): ?>
-                                <div><b>Duration:</b> <?php echo htmlspecialchars($interview['duration']); ?> minutes</div>
-                            <?php endif; ?>
-                            <?php if ($interview['interview_type']): ?>
-                                <div><b>Type:</b> <?php echo htmlspecialchars($interview['interview_type']); ?></div>
-                            <?php endif; ?>
-                            <?php if ($interview['location']): ?>
-                                <div><b>Location:</b> <?php echo htmlspecialchars($interview['location']); ?></div>
-                            <?php endif; ?>
-                            <?php if ($interview['interviewer']): ?>
-                                <div><b>Interviewer:</b> <?php echo htmlspecialchars($interview['interviewer']); ?></div>
-                            <?php endif; ?>
-                        </div>
-                        <?php if ($interview['notes']): ?>
-                            <div style="margin-top:12px;padding:8px;background:#fff;border-radius:4px;"><b>Notes:</b><br><?php echo nl2br(htmlspecialchars($interview['notes'])); ?></div>
-                        <?php endif; ?>
-                    </div>
-                    <div style="margin-top:12px;display:flex;gap:8px;">
-                        <button onclick="openInterviewModal(<?php echo $interview['application_id']; ?>, '<?php echo htmlspecialchars($interview['status']); ?>', '<?php echo htmlspecialchars($interview['interview_date'] ?? ''); ?>', '<?php echo htmlspecialchars($interview['interview_time'] ?? ''); ?>', '<?php echo htmlspecialchars($interview['interview_type'] ?? ''); ?>', '<?php echo htmlspecialchars($interview['location'] ?? ''); ?>', '<?php echo htmlspecialchars($interview['duration'] ?? ''); ?>', '<?php echo htmlspecialchars($interview['interviewer'] ?? ''); ?>', '<?php echo htmlspecialchars($interview['notes'] ?? ''); ?>');" 
-                                style="background:#4fc3f7;color:#222;border:none;padding:6px 14px;border-radius:6px;cursor:pointer;font-weight:bold;">
-                            Update Interview
-                        </button>
-                        <?php if ($interview['status'] === 'Done'): ?>
-                            <button onclick="openFeedbackModal(<?php echo $interview['id']; ?>)" 
-                                    style="background:#4caf50;color:#fff;border:none;padding:6px 14px;border-radius:6px;cursor:pointer;font-weight:bold;">
-                                Add Feedback
-                            </button>
-                        <?php endif; ?>
-                    </div>
-                    <div style="font-size:0.8em;color:#666;margin-top:8px;">Last updated: <?php echo htmlspecialchars($interview['updated_at']); ?></div>
-                </div>
-            <?php endwhile; ?>
-            </div>
-        <?php else: ?>
-            <div style="color:#ccc;text-align:center;padding:32px;background:#222;border-radius:8px;">
-                No interviews scheduled yet.
-            </div>
-        <?php endif; ?>
-    </div>
+
     <script>
-    // Initialize all modal and list elements
-    const postModal = document.getElementById('postModal');
-    const interviewModal = document.getElementById('interviewModal');
-    const feedbackModal = document.getElementById('feedbackModal');
-    const applicationsList = document.getElementById('applicationsList');
-    const interviewList = document.getElementById('interviewList');
-    const jobPostForm = document.getElementById('jobPostForm');
-
-    // Post New Job Modal
-    document.getElementById('openModalBtn').addEventListener('click', function() {
-        postModal.style.display = 'block';
-        document.getElementById('modalTitle').innerText = 'Create Job Post';
-        document.getElementById('edit_id').value = '';
-        jobPostForm.reset();
-    });
-
-    // Close buttons for all modals
-    document.getElementById('closeModalBtn').addEventListener('click', function() {
-        postModal.style.display = 'none';
-    });
-
-    document.getElementById('closeInterviewModal').addEventListener('click', function() {
-        interviewModal.style.display = 'none';
-    });
-
-    document.getElementById('closeFeedbackModal').addEventListener('click', function() {
-        feedbackModal.style.display = 'none';
-    });
-
-    // Close modals when clicking outside
-    window.addEventListener('click', function(event) {
-        if (event.target === postModal) {
-            postModal.style.display = 'none';
+        function openEditModal(id, title, company, requirements, salary, address) {
+            document.getElementById('edit_job_id').value = id;
+            document.getElementById('edit_job_title').value = title;
+            document.getElementById('edit_company').value = company;
+            document.getElementById('edit_requirements').value = requirements;
+            document.getElementById('edit_salary').value = salary;
+            document.getElementById('edit_address').value = address;
+            document.getElementById('editModal').style.display = 'block';
         }
-        if (event.target === interviewModal) {
-            interviewModal.style.display = 'none';
-        }
-        if (event.target === feedbackModal) {
-            feedbackModal.style.display = 'none';
-        }
-    });
 
-    // Show/hide applications list
-    function showApplications() {
-        if (applicationsList.style.display === 'none') {
-            applicationsList.style.display = 'block';
-            if (interviewList) {
-                interviewList.style.display = 'none';
+        function closeEditModal() {
+            document.getElementById('editModal').style.display = 'none';
+        }
+
+        function openPostModal() {
+            document.getElementById('postModal').style.display = 'block';
+        }
+
+        function closePostModal() {
+            document.getElementById('postModal').style.display = 'none';
+        }
+
+        function openCandidateModal() {
+            document.getElementById('candidateModal').style.display = 'block';
+        }
+
+        function closeCandidateModal() {
+            document.getElementById('candidateModal').style.display = 'none';
+        }
+
+        function openInterviewModal() {
+            document.getElementById('interviewModal').style.display = 'block';
+        }
+
+        function closeInterviewModal() {
+            document.getElementById('interviewModal').style.display = 'none';
+        }
+
+        function updateStatus(applicantId, statusField) {
+            const statuses = [
+                'In Review',
+                'In Process',
+                'Interview',
+                'On Demand',
+                'Accepted',
+                'Cancelled',
+                'In Waiting'
+            ];
+            
+            // Here you would typically make an AJAX call to update the status in the database
+            // For now, we'll just show an alert
+            alert(`Update status for applicant ID: ${applicantId}\nAvailable statuses: ${statuses.join(', ')}`);
+        }
+
+        // Close modals when clicking outside
+        window.onclick = function(event) {
+            if (event.target == document.getElementById('postModal')) {
+                closePostModal();
             }
-            applicationsList.scrollIntoView({ behavior: 'smooth' });
-        } else {
-            applicationsList.style.display = 'none';
-        }
-    }
-
-    // Show/hide interviews list
-    function showInterviews() {
-        if (interviewList.style.display === 'none') {
-            interviewList.style.display = 'block';
-            if (applicationsList) {
-                applicationsList.style.display = 'none';
+            if (event.target == document.getElementById('editModal')) {
+                closeEditModal();
             }
-            interviewList.scrollIntoView({ behavior: 'smooth' });
-        } else {
-            interviewList.style.display = 'none';
+            if (event.target == document.getElementById('candidateModal')) {
+                closeCandidateModal();
+            }
+            if (event.target == document.getElementById('interviewModal')) {
+                closeInterviewModal();
+            }
         }
-    }
-
-    // Edit job modal
-    function openEditModal(id, company, job, requirements, salary, address) {
-        postModal.style.display = 'block';
-        document.getElementById('modalTitle').innerText = 'Edit Job Post';
-        document.getElementById('edit_id').value = id;
-        document.getElementById('company').value = company;
-        document.getElementById('job').value = job;
-        document.getElementById('requirements').value = requirements;
-        document.getElementById('salary').value = salary;
-        document.getElementById('address').value = address;
-    }
-
-    // Interview modal
-    function openInterviewModal(applicationId, status, date, time, type, location, duration, interviewer, notes) {
-        interviewModal.style.display = 'block';
-        document.getElementById('interview_application_id').value = applicationId;
-        document.getElementById('interview_status').value = status;
-        document.getElementById('interview_date').value = date;
-        document.getElementById('interview_time').value = time;
-        document.getElementById('interview_type').value = type;
-        document.getElementById('interview_location').value = location;
-        document.getElementById('interview_duration').value = duration || 60;
-        document.getElementById('interviewer').value = interviewer;
-        document.getElementById('interview_notes').value = notes;
-        updateFormFields();
-    }
-
-    // Feedback modal
-    function openFeedbackModal(interviewId) {
-        feedbackModal.style.display = 'block';
-        document.getElementById('feedback_interview_id').value = interviewId;
-    }
-
-    // Update form fields based on interview status
-    function updateFormFields() {
-        const status = document.getElementById('interview_status').value;
-        const scheduledFields = document.getElementById('scheduledFields');
-        const requiredFields = scheduledFields.querySelectorAll('[required]');
-        
-        if (status === 'Scheduled' || status === 'Rescheduled') {
-            scheduledFields.style.display = 'block';
-            requiredFields.forEach(field => field.required = true);
-        } else {
-            scheduledFields.style.display = 'none';
-            requiredFields.forEach(field => field.required = false);
-        }
-    }
-
-    // Form submission handling
-    jobPostForm.addEventListener('submit', function(e) {
-        e.preventDefault();
-        this.submit();
-    });
-
-    // Initialize form fields on page load
-    document.addEventListener('DOMContentLoaded', function() {
-        // Initialize any existing modals
-        if (document.getElementById('interview_status')) {
-            updateFormFields();
-        }
-
-        // Add confirmation for delete actions
-        const deleteButtons = document.querySelectorAll('a[href*="delete="]');
-        deleteButtons.forEach(button => {
-            button.addEventListener('click', function(e) {
-                if (!confirm('Are you sure you want to delete this job post?')) {
-                    e.preventDefault();
-                }
-            });
-        });
-    });
-
-    // Add success message handling
-    const urlParams = new URLSearchParams(window.location.search);
-    if (urlParams.has('success')) {
-        const successMessage = document.createElement('div');
-        successMessage.style.cssText = 'position:fixed;top:20px;right:20px;background:#4caf50;color:white;padding:15px;border-radius:4px;z-index:1000;';
-        successMessage.textContent = 'Operation completed successfully!';
-        document.body.appendChild(successMessage);
-        setTimeout(() => successMessage.remove(), 3000);
-    }
     </script>
-    <!-- Add search results summary -->
-    <div style="color:yellow;background:#222;padding:8px;margin:8px 32px;">
-        Search Results: 
-        <?php if (!empty($search_query)): ?>
-            Found <?php echo $jobs->num_rows; ?> jobs and <?php echo $applications->num_rows; ?> applications matching "<?php echo $search_query; ?>"
-        <?php else: ?>
-            Showing all jobs and applications
-        <?php endif; ?>
-    </div>
 </body>
 </html> 

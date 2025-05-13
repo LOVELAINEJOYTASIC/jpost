@@ -13,7 +13,8 @@ if (isset($_SESSION['user_id'])) {
     } else if (strtolower($_SESSION['user_type']) === 'employer') {
         header('Location: dashboard.php');
     } else {
-        header('Location: track_candidate.php');
+        // For jobseekers, redirect to explore page
+        header('Location: explore.php');
     }
     exit();
 }
@@ -22,6 +23,11 @@ require_once 'config.php';
 $conn = getDBConnection();
 
 $error = '';
+
+// Initialize statements
+$stmt = null;
+$user_stmt = null;
+$applicant_stmt = null;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $username = $conn->real_escape_string($_POST['username']);
@@ -79,8 +85,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 header('Location: dashboard.php');
                 exit();
             } else {
-                error_log("User is regular user - Redirecting to track_candidate.php");
-                header('Location: track_candidate.php');
+                // For jobseekers, redirect to explore page
+                error_log("User is jobseeker - Redirecting to explore.php");
+                header('Location: explore.php');
                 exit();
             }
         } else {
@@ -93,6 +100,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
     
     $stmt->close();
+}
+
+try {
+    // Close all statements if they exist
+    if ($stmt !== null) $stmt->close();
+    if ($user_stmt !== null) $user_stmt->close();
+    if ($applicant_stmt !== null) $applicant_stmt->close();
+} catch (Exception $e) {
+    // Handle any exceptions that might occur during closing
+    error_log("Error closing statements: " . $e->getMessage());
+}
+
+// Check if the resume_file column exists
+$check_column = $conn->query("SHOW COLUMNS FROM user_profiles LIKE 'resume_file'");
+if ($check_column->num_rows === 0) {
+    $conn->query("ALTER TABLE user_profiles ADD COLUMN resume_file VARCHAR(255) AFTER avatar");
+}
+
+// Fetch all job postings
+$sql = "SELECT * FROM jobs ORDER BY created_at DESC";
+$result = $conn->query($sql);
+$jobs = [];
+if ($result && $result->num_rows > 0) {
+    while ($row = $result->fetch_assoc()) {
+        $jobs[] = $row;
+    }
 }
 ?>
 
