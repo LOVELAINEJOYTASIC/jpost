@@ -483,7 +483,7 @@ $stmt->close();
                     <li>*Contacts/Email Address: <input type="text" name="contact" value="<?php echo htmlspecialchars($contact); ?>" required style="width:90%;padding:4px 8px;margin:4px 0;border-radius:8px;border:none;"></li>
                     <li>*Application Letter (skills/position): <textarea name="application" required style="width:90%;padding:4px 8px;margin:4px 0;border-radius:8px;border:none;resize:vertical;"><?php echo htmlspecialchars($application); ?></textarea></li>
                     <li>*Resume (PDF, DOC, DOCX): 
-                        <?php if ($profile['resume_file']): ?>
+                        <?php if ($profile && !empty($profile['resume_file'])): ?>
                             <a href="<?php echo htmlspecialchars($profile['resume_file']); ?>" target="_blank" class="resume-link">View/Download Resume</a><br>
                         <?php endif; ?>
                         <input type="file" name="resume" accept=".pdf,.doc,.docx" style="margin-top:4px;">

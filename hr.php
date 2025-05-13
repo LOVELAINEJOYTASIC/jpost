@@ -235,7 +235,7 @@ linkApplicantsWithUsers($conn);
             margin: 40px 40px 0 40px;
         }
         .applicants-card {
-            background: #fff;
+            background: #f7f7f7;
             color: #222;
             border-radius: 16px;
             box-shadow: 0 4px 16px rgba(0,0,0,0.1);
@@ -251,23 +251,34 @@ linkApplicantsWithUsers($conn);
             font-weight: bold;
         }
         .applicants-table {
+            margin: 0 auto;
+            background: #f7f7f7;
+            border-radius: 10px;
+            box-shadow: 0 2px 8px #0004;
+            min-width: 900px;
             width: 100%;
             border-collapse: separate;
             border-spacing: 0;
             margin-top: 24px;
         }
         .applicants-table th, .applicants-table td {
-            padding: 16px;
+            padding: 12px 18px;
             text-align: left;
             border-bottom: 1px solid #eee;
         }
         .applicants-table th {
-            background: #f7f7f7;
+            background: #4fc3f7;
             font-weight: 600;
             color: #222;
         }
+        .applicants-table tr:nth-child(even) {
+            background: #fff;
+        }
+        .applicants-table tr:nth-child(odd) {
+            background: #f1f8fb;
+        }
         .applicants-table tr:hover {
-            background: #f9f9f9;
+            background: #e3f2fd;
         }
         .action-buttons {
             display: flex;
@@ -483,7 +494,6 @@ linkApplicantsWithUsers($conn);
             <table class="applicants-table">
                 <tr>
                     <th>Name</th>
-                    <th>Email</th>
                     <th>Phone</th>
                     <th>Status</th>
                     <th>Applied</th>
@@ -496,11 +506,10 @@ linkApplicantsWithUsers($conn);
                         <tr>
                             <td>
                                 <?php echo htmlspecialchars($app['name']); ?>
-                                <?php if (!empty($app['full_name'])): ?>
-                                    <br><small style="color:#666;"><?php echo htmlspecialchars($app['full_name']); ?></small>
+                                <?php if (!empty($app['full_name'] ?? '')): ?>
+                                    <br><small style="color:#666;"><?php echo htmlspecialchars($app['full_name'] ?? ''); ?></small>
                                 <?php endif; ?>
                             </td>
-                            <td><?php echo htmlspecialchars($app['email']); ?></td>
                             <td><?php echo htmlspecialchars($app['phone']); ?></td>
                             <td>
                                 <span class="badge <?php echo strtolower(str_replace(' ', '', $app['status1'])); ?>">
