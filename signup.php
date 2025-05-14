@@ -308,7 +308,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <button type="submit">Submit</button>
         <div class="terms">
             <input type="checkbox" id="terms" required>
-            <label for="terms" style="margin:0; color:#4fc3f7;">Terms and Condition</label>
+            <label for="terms" style="margin:0; color:#4fc3f7;">
+                I agree to the <a href="terms.php" target="_blank" style="color:#4fc3f7;text-decoration:underline;">Terms and Conditions</a>
+            </label>
         </div>
     </form>
 </body>

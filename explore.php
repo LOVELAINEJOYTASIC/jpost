@@ -116,27 +116,46 @@ $salary_max = isset($_GET['salary_max']) ? (int)$_GET['salary_max'] : '';
 $location = isset($_GET['location']) ? $conn->real_escape_string($_GET['location']) : '';
 $experience = isset($_GET['experience']) ? $conn->real_escape_string($_GET['experience']) : '';
 
-// Modify the jobs query to include search and filters
-$jobs_query = "SELECT * FROM jobs WHERE 1=1";
+// Modify the jobs query to include applicant count and handle all filters
+$jobs_query = "SELECT j.*, 
+               (SELECT COUNT(*) FROM applicants a WHERE a.job_id = j.id AND a.status1 IN ('Interview', 'On Demand')) as active_applicants
+               FROM jobs j 
+               WHERE 1=1 
+               AND NOT EXISTS (
+                   SELECT 1 FROM applicants a 
+                   WHERE a.job_id = j.id 
+                   AND a.status1 IN ('Accepted', 'Cancelled')
+               )";
+
+// Add search conditions
 if (!empty($search_query)) {
-    $jobs_query .= " AND (job LIKE '%$search%' OR company LIKE '%$search%' OR requirements LIKE '%$search%' OR salary LIKE '%$search%')";
+    $jobs_query .= " AND (j.job LIKE '%$search%' OR j.company LIKE '%$search%' OR j.requirements LIKE '%$search%' OR j.salary LIKE '%$search%')";
 }
+
+// Add job type filter
 if (!empty($job_type)) {
-    $jobs_query .= " AND job_type = '$job_type'";
+    $jobs_query .= " AND j.job_type = '$job_type'";
 }
+
+// Add location filter
 if (!empty($location)) {
-    $jobs_query .= " AND location LIKE '%$location%'";
+    $jobs_query .= " AND j.address LIKE '%$location%'";
 }
+
+// Add experience level filter
 if (!empty($experience)) {
-    $jobs_query .= " AND experience_level = '$experience'";
+    $jobs_query .= " AND j.requirements LIKE '%$experience%'";
 }
+
+// Add salary range filters
 if (!empty($salary_min)) {
-    $jobs_query .= " AND CAST(REPLACE(REPLACE(salary, '₱', ''), ',', '') AS DECIMAL) >= $salary_min";
+    $jobs_query .= " AND CAST(REPLACE(REPLACE(j.salary, '₱', ''), ',', '') AS DECIMAL) >= $salary_min";
 }
 if (!empty($salary_max)) {
-    $jobs_query .= " AND CAST(REPLACE(REPLACE(salary, '₱', ''), ',', '') AS DECIMAL) <= $salary_max";
+    $jobs_query .= " AND CAST(REPLACE(REPLACE(j.salary, '₱', ''), ',', '') AS DECIMAL) <= $salary_max";
 }
-$jobs_query .= " ORDER BY created_at DESC";
+
+$jobs_query .= " ORDER BY j.created_at DESC";
 $jobs = $conn->query($jobs_query);
 
 // Fetch all jobs
@@ -483,11 +502,15 @@ echo '<div style="color:yellow;background:#222;padding:8px;">Jobs found: ' . ($j
 
                 <div class="advanced-search" style="background:#fff;border-radius:12px;padding:16px;margin:0 32px 24px 32px;">
                     <form action="explore.php" method="GET" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;">
-                        <input type="hidden" name="search" value="<?php echo $search_query; ?>">
-                        <input type="hidden" name="type" value="<?php echo $job_type; ?>">
+                        <?php if (!empty($search_query)): ?>
+                            <input type="hidden" name="search" value="<?php echo htmlspecialchars($search_query); ?>">
+                        <?php endif; ?>
+                        <?php if (!empty($job_type)): ?>
+                            <input type="hidden" name="type" value="<?php echo htmlspecialchars($job_type); ?>">
+                        <?php endif; ?>
                         
                         <div>
-                            <label style="display:block;color:#222;margin-bottom:4px;font-weight:500;">Salary Range</label>
+                            <label style="display:block;color:#222;margin-bottom:4px;font-weight:500;">Salary Range (₱)</label>
                             <div style="display:flex;gap:8px;align-items:center;">
                                 <input type="number" name="salary_min" placeholder="Min" value="<?php echo $salary_min; ?>" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;">
                                 <span style="color:#666;">to</span>
@@ -510,8 +533,9 @@ echo '<div style="color:yellow;background:#222;padding:8px;">Jobs found: ' . ($j
                             </select>
                         </div>
                         
-                        <div style="display:flex;align-items:flex-end;">
+                        <div style="display:flex;align-items:flex-end;gap:8px;">
                             <button type="submit" style="background:#4fc3f7;color:#222;border:none;padding:8px 24px;border-radius:6px;font-weight:bold;cursor:pointer;width:100%;">Apply Filters</button>
+                            <a href="explore.php<?php echo !empty($search_query) ? '?search=' . urlencode($search_query) : ''; ?>" style="background:#666;color:#fff;border:none;padding:8px 24px;border-radius:6px;font-weight:bold;cursor:pointer;text-decoration:none;text-align:center;">Clear Filters</a>
                         </div>
                     </form>
                 </div>
@@ -529,20 +553,29 @@ echo '<div style="color:yellow;background:#222;padding:8px;">Jobs found: ' . ($j
                     <?php if ($jobs && $jobs->num_rows > 0): ?>
                         <?php while($row = $jobs->fetch_assoc()): ?>
                             <div style="background:#fff;color:#222;border-radius:8px;box-shadow:0 2px 8px #0002;padding:18px 22px;min-width:220px;max-width:320px;flex:1;position:relative;">
+                                <?php if ($row['active_applicants'] > 0): ?>
+                                    <div style="position:absolute;top:12px;right:12px;background:#ff9800;color:#fff;padding:4px 8px;border-radius:4px;font-size:0.8em;">
+                                        <?php echo $row['active_applicants']; ?> Active Applicant<?php echo $row['active_applicants'] > 1 ? 's' : ''; ?>
+                                    </div>
+                                <?php endif; ?>
                                 <div style="font-size:1.2em;font-weight:bold;margin-bottom:8px;color:#4fc3f7;">
                                     <?php echo htmlspecialchars($row['job']); ?>
                                 </div>
                                 <div><b>Company:</b> <?php echo htmlspecialchars($row['company']); ?></div>
                                 <div><b>Requirements:</b> <?php echo nl2br(htmlspecialchars($row['requirements'])); ?></div>
                                 <div><b>Salary:</b> <?php echo htmlspecialchars($row['salary']); ?></div>
-                                <div style="font-size:0.9em;color:#888;margin-top:8px;">Posted: <?php echo htmlspecialchars($row['created_at']); ?></div>
+                                <div><b>Job Type:</b> <?php echo htmlspecialchars($row['job_type']); ?></div>
+                                <?php if (!empty($row['hours_of_duty'])): ?>
+                                    <div><b>Hours of Duty:</b> <?php echo htmlspecialchars($row['hours_of_duty']); ?></div>
+                                <?php endif; ?>
+                                <div style="font-size:0.9em;color:#888;margin-top:8px;">Posted: <?php echo date('M d, Y', strtotime($row['created_at'])); ?></div>
                                 <div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end;">
                                     <button onclick="applyForJob(<?php echo $row['id']; ?>)" style="background:#4fc3f7;color:#fff;border:none;padding:7px 14px;border-radius:6px;cursor:pointer;font-weight:bold;transition:background 0.2s;">Apply Now</button>
                                 </div>
                             </div>
                         <?php endwhile; ?>
                     <?php else: ?>
-                        <div style="text-align:center;color:#ccc;padding:32px;background:#222;border-radius:12px;">
+                        <div style="text-align:center;color:#ccc;padding:32px;background:#222;border-radius:12px;width:100%;">
                             <h3 style="margin:0 0 12px 0;color:#4fc3f7;">No Jobs Available</h3>
                             <p style="margin:0;">Check back later for new job opportunities.</p>
                         </div>

@@ -390,6 +390,7 @@ while ($note = $notes_result->fetch_assoc()) {
     </div>
 
     <div class="container">
+        <a href="admin.php" style="display:inline-block; margin-bottom:24px; background:#4fc3f7; color:#181818; padding:10px 28px; border-radius:8px; text-decoration:none; font-weight:600; font-size:1.1em; box-shadow:0 2px 8px rgba(0,0,0,0.10); transition:background 0.2s, color 0.2s;">&larr; Back to Admin Dashboard</a>
         <h1 style="color: #4fc3f7; margin-bottom: 24px;">Track Your Applications</h1>
         
         <!-- Action Buttons -->

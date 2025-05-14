@@ -1,4 +1,4 @@
-<?php
+"<?php
 session_start();
 require_once 'config.php';
 $conn = getDBConnection();
@@ -10,7 +10,11 @@ if (!isset($_SESSION['user_id']) || !in_array(strtolower($_SESSION['user_type'])
 }
 
 // Fetch jobseekers
-$sql = "SELECT u.id, u.username, u.created_at, up.full_name, up.email FROM users u LEFT JOIN user_profiles up ON u.id = up.user_id WHERE LOWER(u.user_type) = 'jobseeker' ORDER BY u.created_at DESC";
+$sql = "SELECT u.id, u.username, u.created_at, up.full_name, up.contact, up.address 
+        FROM users u 
+        LEFT JOIN user_profiles up ON u.id = up.user_id 
+        WHERE LOWER(u.user_type) = 'jobseeker' 
+        ORDER BY u.created_at DESC";
 $result = $conn->query($sql);
 $jobseekers = [];
 if ($result && $result->num_rows > 0) {
@@ -91,17 +95,19 @@ if ($result && $result->num_rows > 0) {
             <tr>
                 <th>Username</th>
                 <th>Full Name</th>
-                <th>Email</th>
+                <th>Contact</th>
+                <th>Address</th>
                 <th>Registered At</th>
             </tr>
             <?php if (empty($jobseekers)): ?>
-                <tr><td colspan="4" style="text-align:center;">No jobseekers found.</td></tr>
+                <tr><td colspan="5" style="text-align:center;">No jobseekers found.</td></tr>
             <?php else: ?>
                 <?php foreach ($jobseekers as $js): ?>
                     <tr>
                         <td><?php echo htmlspecialchars($js['username']); ?></td>
                         <td><?php echo htmlspecialchars($js['full_name'] ?? ''); ?></td>
-                        <td><?php echo htmlspecialchars($js['email'] ?? ''); ?></td>
+                        <td><?php echo htmlspecialchars($js['contact'] ?? ''); ?></td>
+                        <td><?php echo htmlspecialchars($js['address'] ?? ''); ?></td>
                         <td><?php echo date('M d, Y', strtotime($js['created_at'])); ?></td>
                     </tr>
                 <?php endforeach; ?>

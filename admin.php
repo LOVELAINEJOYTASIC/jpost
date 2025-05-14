@@ -72,11 +72,40 @@ if (!isset($_SESSION['user_id']) || strtolower($_SESSION['user_type']) !== 'admi
             min-height: 70vh;
         }
         .admin-buttons {
-            display: flex;
-            flex-wrap: wrap;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
             gap: 32px 48px;
             justify-content: center;
             margin-top: 60px;
+            width: 100%;
+            max-width: 1100px;
+        }
+        .admin-card {
+            background: #232a34;
+            border-radius: 16px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.10);
+            padding: 32px 24px 28px 24px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 220px;
+        }
+        .admin-card h3 {
+            margin: 0 0 10px 0;
+            color: #4fc3f7;
+            font-size: 1.3em;
+            font-weight: 600;
+        }
+        .admin-card p {
+            color: #ccc;
+            font-size: 1em;
+            margin-bottom: 24px;
+            text-align: center;
+        }
+        .admin-card .admin-btn {
+            margin: 0;
+            min-width: 160px;
+            width: 100%;
         }
         .admin-btn {
             background: #fff;
@@ -123,11 +152,11 @@ if (!isset($_SESSION['user_id']) || strtolower($_SESSION['user_type']) !== 'admi
         }
         @media (max-width: 900px) {
             .admin-buttons {
-                flex-direction: column;
+                grid-template-columns: 1fr;
                 gap: 18px;
             }
-            .admin-btn {
-                min-width: 180px;
+            .admin-card {
+                min-width: unset;
                 width: 90vw;
                 max-width: 350px;
             }
@@ -155,12 +184,36 @@ if (!isset($_SESSION['user_id']) || strtolower($_SESSION['user_type']) !== 'admi
     <div class="admin-container">
         <h1 style="margin-top:40px; font-size:2.2em; color:#4fc3f7;">Admin Dashboard</h1>
         <div class="admin-buttons">
-            <a class="admin-btn" href="manage_users.php">Manage Users</a>
-            <a class="admin-btn" href="candidate_status.php">Candidate Status</a>
-            <a class="admin-btn" href="security_updates.php">Security Updates</a>
-            <a class="admin-btn" href="track_candidate.php">Track Candidate</a>
-            <a class="admin-btn" href="workflow_management.php">Workflow Management</a>
-            <a class="admin-btn" href="application_overview.php">Application Overview</a>
+            <div class="admin-card">
+                <h3>Manage Users</h3>
+                <p>View, edit, and remove users from the platform.</p>
+                <a class="admin-btn" href="manage_users.php">Manage Users</a>
+            </div>
+            <div class="admin-card">
+                <h3>Candidate Status</h3>
+                <p>Manage candidate status options for job applications.</p>
+                <a href="candidate_status.php" class="admin-btn">Manage Status</a>
+            </div>
+            <div class="admin-card">
+                <h3>Security Updates</h3>
+                <p>View and manage security updates and recommendations.</p>
+                <a href="security_updates.php" class="admin-btn">View Updates</a>
+            </div>
+            <div class="admin-card">
+                <h3>Track Candidate</h3>
+                <p>Track the progress and status of candidates throughout the hiring process.</p>
+                <a class="admin-btn" href="track_candidate.php">Track Candidate</a>
+            </div>
+            <div class="admin-card">
+                <h3>Workflow Management</h3>
+                <p>Manage and optimize the recruitment workflow and processes.</p>
+                <a class="admin-btn" href="workflow_management.php">Workflow Management</a>
+            </div>
+            <div class="admin-card">
+                <h3>Application Overview</h3>
+                <p>Get an overview of all job applications and their statuses.</p>
+                <a class="admin-btn" href="application_overview.php">Application Overview</a>
+            </div>
         </div>
     </div>
     <div class="footer">

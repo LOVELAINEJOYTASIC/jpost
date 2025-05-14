@@ -88,11 +88,20 @@ if (isset($_POST['edit_applicant'])) {
             $update_job_stmt = $conn->prepare($update_job_sql);
             $update_job_stmt->bind_param("sii", $status, $user_data['user_id'], $user_data['job_id']);
             $update_job_stmt->execute();
+            
+            // If status is Accepted or Cancelled, update the job status
+            if ($status === 'Accepted' || $status === 'Cancelled') {
+                $update_job_status_sql = "UPDATE jobs SET status = ? WHERE id = ?";
+                $update_job_status_stmt = $conn->prepare($update_job_status_sql);
+                $job_status = $status === 'Accepted' ? 'Filled' : 'Cancelled';
+                $update_job_status_stmt->bind_param("si", $job_status, $user_data['job_id']);
+                $update_job_status_stmt->execute();
+            }
         }
         
         // Commit transaction
         $conn->commit();
-        header('Location: hr.php?success=updated');
+        header('Location: hr.php?success=updated&status=' . urlencode($status));
         exit();
     } catch (Exception $e) {
         // Rollback transaction on error
@@ -114,11 +123,19 @@ if ($check_job_type->num_rows == 0) {
     $conn->query("ALTER TABLE jobs ADD COLUMN job_type ENUM('Full Time', 'Part Time', 'Remote', 'Internship') DEFAULT 'Full Time'");
 }
 
+// Create status column in jobs table if it doesn't exist
+$check_status = $conn->query("SHOW COLUMNS FROM jobs LIKE 'status'");
+if ($check_status->num_rows == 0) {
+    $conn->query("ALTER TABLE jobs ADD COLUMN status ENUM('Open', 'Filled', 'Cancelled') DEFAULT 'Open'");
+}
+
 // Fetch applicants from database with search functionality
 $search = isset($_GET['search']) ? $conn->real_escape_string($_GET['search']) : '';
 $status_filter = isset($_GET['status']) ? $conn->real_escape_string($_GET['status']) : '';
 
-$sql = "SELECT a.*, up.full_name, up.birthday, up.address, up.contact, up.application, j.job, j.job_type 
+$sql = "SELECT a.*, up.full_name, up.birthday, up.address, up.contact, up.application, 
+               j.job, j.job_type, j.status as job_status,
+               (SELECT COUNT(*) FROM applicants a2 WHERE a2.job_id = j.id AND a2.status1 IN ('Interview', 'On Demand')) as active_applicants
         FROM applicants a 
         LEFT JOIN user_profiles up ON a.user_id = up.user_id 
         LEFT JOIN jobs j ON a.job_id = j.id 
@@ -645,6 +662,15 @@ if ($stats_result && $stats_result->num_rows > 0) {
         .view-btn:hover {
             background: #444;
         }
+        .badge {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.9em;
+            font-weight: 500;
+        }
+        .badge.open { background: #4caf50; color: #fff; }
+        .badge.filled { background: #2196f3; color: #fff; }
+        .badge.cancelled { background: #f44336; color: #fff; }
     </style>
 </head>
 <body>
@@ -700,12 +726,14 @@ if ($stats_result && $stats_result->num_rows > 0) {
                     <th>Name</th>
                     <th>Job Position</th>
                     <th>Job Type</th>
+                    <th>Job Status</th>
+                    <th>Active Applicants</th>
                     <th>Status</th>
                     <th>Applied</th>
                     <th>Actions</th>
                 </tr>
                 <?php if (empty($applicants)): ?>
-                    <tr><td colspan="6" style="text-align:center;">No applicants found.</td></tr>
+                    <tr><td colspan="8" style="text-align:center;">No applicants found.</td></tr>
                 <?php else: ?>
                     <?php foreach ($applicants as $app): ?>
                         <tr>
@@ -717,6 +745,12 @@ if ($stats_result && $stats_result->num_rows > 0) {
                             </td>
                             <td><?php echo htmlspecialchars($app['job'] ?? 'N/A'); ?></td>
                             <td><?php echo htmlspecialchars($app['job_type'] ?? 'N/A'); ?></td>
+                            <td>
+                                <span class="badge <?php echo strtolower($app['job_status'] ?? 'open'); ?>">
+                                    <?php echo htmlspecialchars($app['job_status'] ?? 'Open'); ?>
+                                </span>
+                            </td>
+                            <td><?php echo $app['active_applicants'] ?? 0; ?></td>
                             <td>
                                 <span class="badge <?php echo strtolower(str_replace(' ', '', $app['status1'])); ?>">
                                     <?php echo htmlspecialchars($app['status1']); ?>

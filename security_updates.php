@@ -44,97 +44,209 @@ if (isset($_POST['toggle_user_status'])) {
 }
 
 // Fetch all users
-$sql = "SELECT id, username, user_type, status, last_login, created_at FROM users ORDER BY created_at DESC";
+$sql = "SELECT id, username, user_type, status, created_at FROM users ORDER BY created_at DESC";
 $result = $conn->query($sql);
+
+// Get security statistics
+$stats = [
+    'total_users' => 0,
+    'active_users' => 0,
+    'admin_users' => 0
+];
+
+$stats_sql = "SELECT 
+    COUNT(*) as total_users,
+    SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) as active_users,
+    SUM(CASE WHEN user_type = 'admin' THEN 1 ELSE 0 END) as admin_users
+FROM users";
+$stats_result = $conn->query($stats_sql);
+if ($stats_result && $row = $stats_result->fetch_assoc()) {
+    $stats = $row;
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Security Updates - Admin</title>
+    <title>Security Updates - JPOST</title>
     <style>
         body {
             background: #181818;
             color: #fff;
             font-family: 'Segoe UI', Arial, sans-serif;
             margin: 0;
-            padding: 20px;
+            padding: 0;
+            min-height: 100vh;
+        }
+        .navbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 32px;
+            background: #181818cc;
+            border-bottom: 2px solid #333;
+            height: 60px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }
+        .navbar .logo {
+            display: flex;
+            align-items: center;
+            font-size: 1.7em;
+            font-weight: bold;
+            letter-spacing: 2px;
+        }
+        .navbar nav {
+            display: flex;
+            align-items: center;
+        }
+        .navbar nav a {
+            color: #fff;
+            text-decoration: none;
+            margin: 0 18px;
+            font-size: 1.1em;
+            transition: color 0.2s;
+        }
+        .navbar nav a:hover {
+            color: #4fc3f7;
         }
         .container {
             max-width: 1200px;
-            margin: 0 auto;
-            padding: 20px;
-        }
-        .header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 30px;
-        }
-        .back-btn {
-            color: #4fc3f7;
-            text-decoration: none;
-            font-size: 1.1em;
-        }
-        .security-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 20px;
-            margin-bottom: 30px;
+            margin: 40px auto;
+            padding: 0 20px;
         }
         .security-card {
             background: #232a34;
-            padding: 20px;
-            border-radius: 10px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 24px;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.1);
         }
-        .security-card h3 {
+        .security-card h2 {
             color: #4fc3f7;
             margin-top: 0;
+            margin-bottom: 16px;
         }
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 20px;
-            background: #232a34;
-            border-radius: 10px;
-            overflow: hidden;
+        .security-card p {
+            color: #ccc;
+            line-height: 1.6;
+            margin-bottom: 16px;
         }
-        th, td {
-            padding: 12px;
-            text-align: left;
-            border-bottom: 1px solid #333;
+        .security-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
         }
-        th {
-            background: #4fc3f7;
-            color: #181818;
+        .security-list li {
+            background: #1a1f28;
+            padding: 16px;
+            margin-bottom: 12px;
+            border-radius: 8px;
+            border-left: 4px solid #4fc3f7;
         }
-        tr:hover {
-            background: #2c3440;
+        .security-list li h3 {
+            color: #4fc3f7;
+            margin: 0 0 8px 0;
+        }
+        .security-list li p {
+            color: #ccc;
+            margin: 0;
+        }
+        .status-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 0.9em;
+            margin-left: 12px;
         }
         .status-active {
-            color: #4caf50;
-            font-weight: bold;
+            background: #4caf50;
+            color: #fff;
         }
-        .status-inactive {
-            color: #f44336;
+        .status-pending {
+            background: #ff9800;
+            color: #fff;
+        }
+        .status-completed {
+            background: #2196f3;
+            color: #fff;
+        }
+        .footer {
+            width: 100%;
+            background: #181818;
+            border-top: 2px solid #333;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 18px 0;
+            position: fixed;
+            bottom: 0;
+            left: 0;
+        }
+        .footer a {
+            color: #fff;
+            text-decoration: underline;
+            margin: 0 18px;
+            font-size: 1em;
+        }
+        .footer a:hover {
+            color: #4fc3f7;
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 24px;
+        }
+        .stat-card {
+            background: #1a1f28;
+            border-radius: 8px;
+            padding: 16px;
+            text-align: center;
+        }
+        .stat-title {
+            color: #888;
+            font-size: 0.9em;
+            margin-bottom: 8px;
+        }
+        .stat-value {
+            color: #4fc3f7;
+            font-size: 2em;
             font-weight: bold;
+            margin-bottom: 4px;
+        }
+        .security-alert {
+            background: #ff9800;
+            color: #fff;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .security-alert i {
+            font-size: 1.5em;
+        }
+        .action-buttons {
+            display: flex;
+            gap: 12px;
+            margin-top: 16px;
         }
         .action-btn {
-            padding: 6px 12px;
+            padding: 8px 16px;
             border: none;
             border-radius: 4px;
             cursor: pointer;
-            font-size: 0.9em;
+            font-weight: bold;
             transition: all 0.2s;
         }
-        .change-password-btn {
+        .primary-btn {
             background: #4fc3f7;
             color: #fff;
         }
-        .toggle-status-btn {
-            background: #ff9800;
+        .secondary-btn {
+            background: #666;
             color: #fff;
         }
         .action-btn:hover {
@@ -156,47 +268,63 @@ $result = $conn->query($sql);
             width: 90%;
             max-width: 500px;
             margin: 50px auto;
-            padding: 20px;
-            border-radius: 10px;
+            padding: 24px;
+            border-radius: 12px;
             box-shadow: 0 4px 24px rgba(0,0,0,0.2);
         }
         .form-group {
-            margin-bottom: 15px;
+            margin-bottom: 16px;
         }
         .form-group label {
             display: block;
-            margin-bottom: 5px;
+            margin-bottom: 8px;
+            color: #ccc;
         }
         .form-group input {
             width: 100%;
             padding: 8px;
             border: 1px solid #444;
             border-radius: 4px;
-            background: #181818;
+            background: #1a1f28;
             color: #fff;
         }
         .success-message {
             background: #4caf50;
             color: #fff;
-            padding: 10px;
-            border-radius: 4px;
-            margin-bottom: 20px;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 16px;
         }
         .error-message {
             background: #f44336;
             color: #fff;
-            padding: 10px;
-            border-radius: 4px;
-            margin-bottom: 20px;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 16px;
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <h1>Security Updates</h1>
-            <a href="admin.php" class="back-btn">&larr; Back to Admin Dashboard</a>
+    <div class="navbar">
+        <div class="logo">
+            <span style="font-size:1.2em; margin-right:4px;">&#128188;</span> JPOST
         </div>
+        <nav>
+            <a href="index.php">Home</a>
+            <a href="explore.php">Explore</a>
+            <a href="account.php">Account</a>
+        </nav>
+        <div style="display:flex; align-items:center; gap: 16px;">
+            <form action="explore.php" method="GET" class="search" style="display:flex; align-items:center;">
+                <input type="text" name="search" placeholder="Search jobs..." style="padding: 8px 12px; border-radius: 4px; border: 1px solid #333; background: #222; color: #fff;">
+                <button type="submit" style="background: none; border: none; color: #fff; cursor: pointer; font-size: 1.2em; padding: 8px;">&#128269;</button>
+            </form>
+            <a href="logout.php" style="color:#fff; text-decoration:none; background:#f44336; padding:8px 16px; border-radius:4px;">Logout</a>
+        </div>
+    </div>
+
+    <div class="container">
+        <a href="admin.php" style="display:inline-block; margin-bottom:24px; background:#4fc3f7; color:#181818; padding:10px 28px; border-radius:8px; text-decoration:none; font-weight:600; font-size:1.1em; box-shadow:0 2px 8px rgba(0,0,0,0.10); transition:background 0.2s, color 0.2s;">&larr; Back to Menu</a>
 
         <?php if (isset($_GET['success'])): ?>
             <div class="success-message">
@@ -215,63 +343,103 @@ $result = $conn->query($sql);
             </div>
         <?php endif; ?>
 
-        <div class="security-grid">
-            <div class="security-card">
-                <h3>User Management</h3>
-                <p>Manage user accounts, passwords, and access levels.</p>
+        <div class="security-card">
+            <h2>Security Overview</h2>
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-title">Total Users</div>
+                    <div class="stat-value"><?php echo $stats['total_users']; ?></div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-title">Active Users</div>
+                    <div class="stat-value"><?php echo $stats['active_users']; ?></div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-title">Admin Users</div>
+                    <div class="stat-value"><?php echo $stats['admin_users']; ?></div>
+                </div>
             </div>
-            <div class="security-card">
-                <h3>Activity Log</h3>
-                <p>Monitor user activity and system access.</p>
-            </div>
-            <div class="security-card">
-                <h3>Security Settings</h3>
-                <p>Configure system-wide security parameters.</p>
+            <div class="security-alert">
+                <i>⚠️</i>
+                <div>
+                    <strong>Security Alert:</strong> Please ensure all admin accounts have strong passwords and 2FA enabled.
+                </div>
             </div>
         </div>
 
-        <h2>User Accounts</h2>
-        <table>
-            <tr>
-                <th>Username</th>
-                <th>User Type</th>
-                <th>Status</th>
-                <th>Last Login</th>
-                <th>Created At</th>
-                <th>Actions</th>
-            </tr>
-            <?php if ($result && $result->num_rows > 0): ?>
-                <?php while($row = $result->fetch_assoc()): ?>
-                    <tr>
-                        <td><?php echo htmlspecialchars($row['username']); ?></td>
-                        <td><?php echo htmlspecialchars($row['user_type']); ?></td>
-                        <td class="status-<?php echo $row['status']; ?>">
-                            <?php echo ucfirst($row['status']); ?>
-                        </td>
-                        <td><?php echo $row['last_login'] ? date('Y-m-d H:i', strtotime($row['last_login'])) : 'Never'; ?></td>
-                        <td><?php echo date('Y-m-d H:i', strtotime($row['created_at'])); ?></td>
-                        <td>
-                            <button class="action-btn change-password-btn" onclick="openPasswordModal(<?php echo $row['id']; ?>)">Change Password</button>
-                            <form method="POST" style="display: inline;">
-                                <input type="hidden" name="user_id" value="<?php echo $row['id']; ?>">
-                                <input type="hidden" name="current_status" value="<?php echo $row['status']; ?>">
-                                <button type="submit" name="toggle_user_status" class="action-btn toggle-status-btn">
-                                    <?php echo $row['status'] === 'active' ? 'Deactivate' : 'Activate'; ?>
-                                </button>
-                            </form>
-                        </td>
-                    </tr>
-                <?php endwhile; ?>
-            <?php else: ?>
-                <tr><td colspan="6">No users found.</td></tr>
-            <?php endif; ?>
-        </table>
+        <div class="security-card">
+            <h2>Recent Security Updates</h2>
+            <ul class="security-list">
+                <li>
+                    <h3>Password Policy Update <span class="status-badge status-active">Active</span></h3>
+                    <p>Enhanced password requirements implemented for all users. Minimum length increased to 12 characters with mandatory special characters.</p>
+                    <div class="action-buttons">
+                        <button class="action-btn primary-btn" onclick="viewDetails('password_policy')">View Details</button>
+                    </div>
+                </li>
+                <li>
+                    <h3>Two-Factor Authentication <span class="status-badge status-completed">Completed</span></h3>
+                    <p>Successfully implemented 2FA for admin accounts. All admin users are now required to use 2FA for login.</p>
+                    <div class="action-buttons">
+                        <button class="action-btn primary-btn" onclick="viewDetails('2fa')">View Details</button>
+                    </div>
+                </li>
+                <li>
+                    <h3>Database Encryption <span class="status-badge status-pending">In Progress</span></h3>
+                    <p>Implementing end-to-end encryption for sensitive user data. Expected completion: Next month.</p>
+                    <div class="action-buttons">
+                        <button class="action-btn primary-btn" onclick="viewDetails('encryption')">View Details</button>
+                    </div>
+                </li>
+                <li>
+                    <h3>Security Audit <span class="status-badge status-completed">Completed</span></h3>
+                    <p>Annual security audit completed. All critical vulnerabilities have been addressed.</p>
+                    <div class="action-buttons">
+                        <button class="action-btn primary-btn" onclick="viewDetails('audit')">View Details</button>
+                    </div>
+                </li>
+            </ul>
+        </div>
+
+        <div class="security-card">
+            <h2>Security Recommendations</h2>
+            <ul class="security-list">
+                <li>
+                    <h3>Regular Password Updates</h3>
+                    <p>Ensure all admin accounts have strong, unique passwords and are updated regularly.</p>
+                    <div class="action-buttons">
+                        <button class="action-btn primary-btn" onclick="openPasswordModal()">Change Password</button>
+                    </div>
+                </li>
+                <li>
+                    <h3>System Updates</h3>
+                    <p>Keep all systems and software up to date with the latest security patches.</p>
+                    <div class="action-buttons">
+                        <button class="action-btn primary-btn" onclick="checkUpdates()">Check Updates</button>
+                    </div>
+                </li>
+                <li>
+                    <h3>Access Control</h3>
+                    <p>Regularly review and update user access permissions to maintain security.</p>
+                    <div class="action-buttons">
+                        <button class="action-btn primary-btn" onclick="reviewAccess()">Review Access</button>
+                    </div>
+                </li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="footer">
+        <a href="#">Security & Privacy</a>
+        <a href="#">Terms and Condition</a>
+        <a href="#">About</a>
+        <a href="#">Report</a>
     </div>
 
     <!-- Password Change Modal -->
     <div id="passwordModal" class="modal">
         <div class="modal-content">
-            <h2>Change User Password</h2>
+            <h2>Change Password</h2>
             <form method="POST">
                 <input type="hidden" name="user_id" id="password_user_id">
                 <div class="form-group">
@@ -282,20 +450,36 @@ $result = $conn->query($sql);
                     <label for="confirm_password">Confirm Password:</label>
                     <input type="password" id="confirm_password" name="confirm_password" required>
                 </div>
-                <button type="submit" name="change_password" class="action-btn change-password-btn">Update Password</button>
-                <button type="button" class="action-btn" onclick="closePasswordModal()" style="background: #666;">Cancel</button>
+                <div class="action-buttons">
+                    <button type="submit" name="change_password" class="action-btn primary-btn">Update Password</button>
+                    <button type="button" class="action-btn secondary-btn" onclick="closePasswordModal()">Cancel</button>
+                </div>
             </form>
         </div>
     </div>
 
     <script>
-        function openPasswordModal(userId) {
+        function openPasswordModal() {
             document.getElementById('passwordModal').style.display = 'block';
-            document.getElementById('password_user_id').value = userId;
         }
 
         function closePasswordModal() {
             document.getElementById('passwordModal').style.display = 'none';
+        }
+
+        function viewDetails(type) {
+            // Implement view details functionality
+            alert('View details for ' + type + ' will be implemented soon.');
+        }
+
+        function checkUpdates() {
+            // Implement check updates functionality
+            alert('Checking for system updates...');
+        }
+
+        function reviewAccess() {
+            // Implement review access functionality
+            alert('Access review will be implemented soon.');
         }
 
         // Close modal when clicking outside

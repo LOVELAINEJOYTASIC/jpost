@@ -246,6 +246,7 @@ if ($result && $result->num_rows > 0) {
         <div class="links">
             <a href="signup.php">Create Account</a>
             <a href="forgot_password.php">Forgot Password?</a>
+            <a href="terms.php" target="_blank">Terms & Conditions</a>
         </div>
     </div>
 </body>

@@ -211,6 +211,18 @@ $accepted_jobs_stmt->bind_param("i", $user_id);
 $accepted_jobs_stmt->execute();
 $accepted_jobs = $accepted_jobs_stmt->get_result();
 
+// Add notification system
+$notifications_sql = "SELECT j.job, j.company, ja.status, ja.created_at 
+                     FROM job_applications ja 
+                     JOIN jobs j ON ja.job_id = j.id 
+                     WHERE ja.user_id = ? 
+                     AND ja.status IN ('Accepted', 'Interview', 'On Demand')
+                     ORDER BY ja.created_at DESC";
+$notifications_stmt = $conn->prepare($notifications_sql);
+$notifications_stmt->bind_param("i", $user_id);
+$notifications_stmt->execute();
+$notifications = $notifications_stmt->get_result();
+
 // Set default values
 $full_name = $profile['full_name'] ?? '';
 $birthday = $profile['birthday'] ?? '';
@@ -466,6 +478,25 @@ $stmt->close();
             <a href="logout.php" style="color:#fff; text-decoration:none; margin-left:18px; background:#f44336; padding:8px 16px; border-radius:4px;">Logout</a>
         </div>
     </div>
+    <?php if ($notifications && $notifications->num_rows > 0): ?>
+        <div class="notifications-container" style="max-width: 800px; margin: 20px auto; padding: 0 20px;">
+            <?php while($notification = $notifications->fetch_assoc()): ?>
+                <div class="notification" style="background: <?php echo $notification['status'] === 'Accepted' ? '#4caf50' : '#2196f3'; ?>; color: white; padding: 15px; border-radius: 8px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; animation: slideIn 0.5s ease-out;">
+                    <div>
+                        <strong style="font-size: 1.1em;"><?php echo htmlspecialchars($notification['status']); ?>!</strong>
+                        <p style="margin: 5px 0 0 0;">
+                            Your application for <strong><?php echo htmlspecialchars($notification['job']); ?></strong> 
+                            at <strong><?php echo htmlspecialchars($notification['company']); ?></strong> 
+                            has been <?php echo strtolower($notification['status']); ?>.
+                        </p>
+                    </div>
+                    <div style="font-size: 0.9em;">
+                        <?php echo date('M d, Y', strtotime($notification['created_at'])); ?>
+                    </div>
+                </div>
+            <?php endwhile; ?>
+        </div>
+    <?php endif; ?>
     <div class="account-container">
         <form class="account-content" method="POST" enctype="multipart/form-data">
             <?php if ($success_message): ?>

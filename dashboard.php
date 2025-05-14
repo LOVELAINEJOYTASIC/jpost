@@ -20,10 +20,23 @@ if (isset($_POST['post_new_job'])) {
     $requirements = $conn->real_escape_string($_POST['requirements']);
     $salary = $conn->real_escape_string($_POST['salary']);
     $address = $conn->real_escape_string($_POST['address']);
+    $hours_of_duty = $conn->real_escape_string($_POST['hours_of_duty']);
+    $job_type = $conn->real_escape_string($_POST['job_type']);
     
-    $insert_sql = "INSERT INTO jobs (job, company, requirements, salary, address) VALUES (?, ?, ?, ?, ?)";
+    // Check if columns exist before adding them
+    $check_hours = $conn->query("SHOW COLUMNS FROM jobs LIKE 'hours_of_duty'");
+    if ($check_hours->num_rows == 0) {
+        $conn->query("ALTER TABLE jobs ADD COLUMN hours_of_duty VARCHAR(100) NULL");
+    }
+    
+    $check_job_type = $conn->query("SHOW COLUMNS FROM jobs LIKE 'job_type'");
+    if ($check_job_type->num_rows == 0) {
+        $conn->query("ALTER TABLE jobs ADD COLUMN job_type ENUM('Full Time', 'Part Time') DEFAULT 'Full Time'");
+    }
+    
+    $insert_sql = "INSERT INTO jobs (job, company, requirements, salary, address, hours_of_duty, job_type) VALUES (?, ?, ?, ?, ?, ?, ?)";
     $insert_stmt = $conn->prepare($insert_sql);
-    $insert_stmt->bind_param("sssss", $job_title, $company, $requirements, $salary, $address);
+    $insert_stmt->bind_param("sssssss", $job_title, $company, $requirements, $salary, $address, $hours_of_duty, $job_type);
     
     if ($insert_stmt->execute()) {
         header('Location: dashboard.php?success=posted');
@@ -55,10 +68,23 @@ if (isset($_POST['edit_job'])) {
     $requirements = $conn->real_escape_string($_POST['requirements']);
     $salary = $conn->real_escape_string($_POST['salary']);
     $address = $conn->real_escape_string($_POST['address']);
+    $hours_of_duty = $conn->real_escape_string($_POST['hours_of_duty']);
+    $job_type = $conn->real_escape_string($_POST['job_type']);
     
-    $update_sql = "UPDATE jobs SET job = ?, company = ?, requirements = ?, salary = ?, address = ? WHERE id = ?";
+    // Check if columns exist before adding them
+    $check_hours = $conn->query("SHOW COLUMNS FROM jobs LIKE 'hours_of_duty'");
+    if ($check_hours->num_rows == 0) {
+        $conn->query("ALTER TABLE jobs ADD COLUMN hours_of_duty VARCHAR(100) NULL");
+    }
+    
+    $check_job_type = $conn->query("SHOW COLUMNS FROM jobs LIKE 'job_type'");
+    if ($check_job_type->num_rows == 0) {
+        $conn->query("ALTER TABLE jobs ADD COLUMN job_type ENUM('Full Time', 'Part Time') DEFAULT 'Full Time'");
+    }
+    
+    $update_sql = "UPDATE jobs SET job = ?, company = ?, requirements = ?, salary = ?, address = ?, hours_of_duty = ?, job_type = ? WHERE id = ?";
     $update_stmt = $conn->prepare($update_sql);
-    $update_stmt->bind_param("sssssi", $job_title, $company, $requirements, $salary, $address, $job_id);
+    $update_stmt->bind_param("sssssssi", $job_title, $company, $requirements, $salary, $address, $hours_of_duty, $job_type, $job_id);
     if ($update_stmt->execute()) {
         header('Location: dashboard.php?success=updated');
         exit();
@@ -80,6 +106,105 @@ if (isset($_POST['update_interview_status'])) {
         exit();
     }
     $update_stmt->close();
+}
+
+// Handle recruit status update
+if (isset($_POST['update_recruit_status'])) {
+    $applicant_id = (int)$_POST['applicant_id'];
+    $recruit_status = $conn->real_escape_string($_POST['recruit_status']);
+    $offer_details = $conn->real_escape_string($_POST['offer_details'] ?? '');
+    $recruitment_notes = $conn->real_escape_string($_POST['recruitment_notes'] ?? '');
+    
+    $update_sql = "UPDATE applicants SET 
+        status3 = ?,
+        offer_details = ?,
+        recruitment_notes = ?,
+        last_updated = NOW()
+        WHERE id = ?";
+    $update_stmt = $conn->prepare($update_sql);
+    $update_stmt->bind_param("sssi", $recruit_status, $offer_details, $recruitment_notes, $applicant_id);
+    
+    if ($update_stmt->execute()) {
+        header('Location: dashboard.php?success=recruit_updated');
+        exit();
+    }
+    $update_stmt->close();
+}
+
+// Handle adding notes
+if (isset($_POST['add_note'])) {
+    $applicant_id = (int)$_POST['applicant_id'];
+    $note = $conn->real_escape_string($_POST['note']);
+    
+    $insert_sql = "INSERT INTO candidate_notes (applicant_id, note, created_at) VALUES (?, ?, NOW())";
+    $insert_stmt = $conn->prepare($insert_sql);
+    $insert_stmt->bind_param("is", $applicant_id, $note);
+    
+    if ($insert_stmt->execute()) {
+        header('Location: dashboard.php?success=note_added');
+        exit();
+    }
+    $insert_stmt->close();
+}
+
+// Handle sending emails
+if (isset($_POST['send_email'])) {
+    $applicant_id = (int)$_POST['applicant_id'];
+    $subject = $conn->real_escape_string($_POST['email_subject']);
+    $body = $conn->real_escape_string($_POST['email_body']);
+    
+    // Get applicant email
+    $email_sql = "SELECT email FROM applicants WHERE id = ?";
+    $email_stmt = $conn->prepare($email_sql);
+    $email_stmt->bind_param("i", $applicant_id);
+    $email_stmt->execute();
+    $email_result = $email_stmt->get_result();
+    $applicant = $email_result->fetch_assoc();
+    
+    if ($applicant) {
+        // Send email using your preferred method
+        // For now, we'll just store it in the database
+        $insert_sql = "INSERT INTO email_logs (applicant_id, subject, body, sent_at) VALUES (?, ?, ?, NOW())";
+        $insert_stmt = $conn->prepare($insert_sql);
+        $insert_stmt->bind_param("iss", $applicant_id, $subject, $body);
+        $insert_stmt->execute();
+        $insert_stmt->close();
+    }
+    
+    header('Location: dashboard.php?success=email_sent');
+    exit();
+}
+
+// Handle bulk actions
+if (isset($_POST['bulk_action'])) {
+    $action = $_POST['bulk_action'];
+    $applicant_ids = explode(',', $_POST['applicant_ids']);
+    
+    foreach ($applicant_ids as $id) {
+        $applicant_id = (int)$id;
+        switch ($action) {
+            case 'send_offer':
+                $status = 'Offer Sent';
+                break;
+            case 'mark_hired':
+                $status = 'Hired';
+                break;
+            case 'mark_declined':
+                $status = 'Offer Declined';
+                break;
+            default:
+                continue 2;
+        }
+        
+        $update_sql = "UPDATE applicants SET status3 = ? WHERE id = ?";
+        $update_stmt = $conn->prepare($update_sql);
+        $update_stmt->bind_param("si", $status, $applicant_id);
+        $update_stmt->execute();
+        $update_stmt->close();
+    }
+    
+    header('Location: dashboard.php?success=bulk_updated');
+    exit();
 }
 
 // Fetch employer's posted jobs
@@ -226,6 +351,8 @@ $applicants_result = $applicants_stmt->get_result();
             flex-direction: column;
             gap: 24px;
             margin: auto 0;
+            position: relative;
+            z-index: 10;
         }
         .dashboard-actions button {
             width: 200px;
@@ -236,15 +363,41 @@ $applicants_result = $applicants_stmt->get_result();
             font-weight: bold;
             cursor: pointer;
             margin-bottom: 0;
-            transition: filter 0.15s;
             text-align: center;
             display: block;
+            position: relative;
+            transition: all 0.2s ease;
+            outline: none;
+            -webkit-tap-highlight-color: transparent;
         }
-        .dashboard-actions .candidate-list { background: #7ed957; color: #222; }
-        .dashboard-actions .resume { background: #ffb366; color: #222; }
-        .dashboard-actions .interview { background: #f7f7b6; color: #222; }
-        .dashboard-actions .recruit { background: #008080; color: #fff; }
-        .dashboard-actions button:hover { filter: brightness(0.95); }
+        .dashboard-actions .candidate-list { 
+            background: #7ed957; 
+            color: #222;
+        }
+        .dashboard-actions .resume { 
+            background: #ffb366; 
+            color: #222;
+        }
+        .dashboard-actions .interview { 
+            background: #f7f7b6; 
+            color: #222;
+        }
+        .dashboard-actions .recruit { 
+            background: #008080; 
+            color: #fff;
+        }
+        .dashboard-actions button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        }
+        .dashboard-actions button:active {
+            transform: translateY(0);
+            box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+        }
+        .dashboard-actions button:focus {
+            outline: 2px solid #4fc3f7;
+            outline-offset: 2px;
+        }
         .section-title {
             color: #4fc3f7;
             font-size: 1.3em;
@@ -611,6 +764,354 @@ $applicants_result = $applicants_stmt->get_result();
             color: #666;
             font-size: 1.1em;
         }
+
+        /* Recruit Modal Styles */
+        .recruit-list {
+            max-height: 600px;
+            overflow-y: auto;
+            margin: 20px 0;
+        }
+        .recruit-card {
+            background: #2a323d;
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+        .recruit-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+        .recruit-header h3 {
+            margin: 0;
+            color: #4fc3f7;
+        }
+        .recruit-status {
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 0.9em;
+            font-weight: bold;
+        }
+        .recruit-status.pending { background: #ffd700; color: #000; }
+        .recruit-status.offer-sent { background: #2196f3; color: #fff; }
+        .recruit-status.offer-accepted { background: #4caf50; color: #fff; }
+        .recruit-status.offer-declined { background: #f44336; color: #fff; }
+        .recruit-status.onboarding { background: #9c27b0; color: #fff; }
+        .recruit-status.hired { background: #4caf50; color: #fff; }
+        .recruit-details {
+            margin-bottom: 16px;
+        }
+        .recruit-details p {
+            margin: 8px 0;
+            color: #fff;
+        }
+        .recruit-form {
+            display: flex;
+            gap: 12px;
+            width: 100%;
+        }
+        .recruit-select {
+            flex: 1;
+            padding: 8px;
+            border-radius: 4px;
+            border: 1px solid #444;
+            background: #2a323d;
+            color: #fff;
+        }
+        .update-recruit-btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            background: #4fc3f7;
+            color: #222;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        .update-recruit-btn:hover {
+            background: #0288d1;
+            color: #fff;
+        }
+        .no-recruits {
+            text-align: center;
+            padding: 32px;
+            color: #666;
+            font-size: 1.1em;
+        }
+        .recruit-form-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 16px;
+            margin-bottom: 16px;
+        }
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .form-group label {
+            color: #4fc3f7;
+            font-weight: 500;
+        }
+        .recruit-textarea {
+            width: 100%;
+            min-height: 80px;
+            padding: 8px;
+            border-radius: 4px;
+            border: 1px solid #444;
+            background: #2a323d;
+            color: #fff;
+            resize: vertical;
+        }
+        .recruit-form-footer {
+            display: flex;
+            justify-content: flex-end;
+        }
+        .recruit-filters {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        .filter-group {
+            flex: 1;
+            min-width: 200px;
+        }
+        .filter-group select {
+            width: 100%;
+            padding: 8px;
+            border-radius: 4px;
+            border: 1px solid #444;
+            background: #2a323d;
+            color: #fff;
+        }
+        .recruit-card {
+            position: relative;
+        }
+        .recruit-timestamp {
+            position: absolute;
+            top: 16px;
+            right: 16px;
+            font-size: 0.8em;
+            color: #888;
+        }
+        .recruit-history {
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid #444;
+        }
+        .history-item {
+            font-size: 0.9em;
+            color: #888;
+            margin-bottom: 4px;
+        }
+        .recruit-search-sort {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        .search-box {
+            flex: 2;
+            min-width: 200px;
+        }
+        .search-box input {
+            width: 100%;
+            padding: 8px 12px;
+            border-radius: 4px;
+            border: 1px solid #444;
+            background: #2a323d;
+            color: #fff;
+        }
+        .sort-options {
+            flex: 1;
+            min-width: 150px;
+        }
+        .sort-options select {
+            width: 100%;
+            padding: 8px;
+            border-radius: 4px;
+            border: 1px solid #444;
+            background: #2a323d;
+            color: #fff;
+        }
+        .quick-actions {
+            display: flex;
+            gap: 8px;
+            margin-top: 12px;
+        }
+        .quick-action-btn {
+            padding: 6px 12px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9em;
+            transition: all 0.2s;
+        }
+        .quick-action-btn.offer {
+            background: #2196f3;
+            color: #fff;
+        }
+        .quick-action-btn.offer:hover {
+            background: #1976d2;
+        }
+        .quick-action-btn.hire {
+            background: #4caf50;
+            color: #fff;
+        }
+        .quick-action-btn.hire:hover {
+            background: #388e3c;
+        }
+        .quick-action-btn.decline {
+            background: #f44336;
+            color: #fff;
+        }
+        .quick-action-btn.decline:hover {
+            background: #d32f2f;
+        }
+        .recruit-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+        .stat-box {
+            background: #2a323d;
+            padding: 12px;
+            border-radius: 8px;
+            text-align: center;
+        }
+        .stat-box .number {
+            font-size: 1.5em;
+            font-weight: bold;
+            color: #4fc3f7;
+        }
+        .stat-box .label {
+            font-size: 0.9em;
+            color: #888;
+        }
+        .recruit-tools {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+        .bulk-actions {
+            display: flex;
+            gap: 8px;
+        }
+        .bulk-select {
+            padding: 8px;
+            border-radius: 4px;
+            border: 1px solid #444;
+            background: #2a323d;
+            color: #fff;
+            min-width: 200px;
+        }
+        .bulk-action-btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            background: #4fc3f7;
+            color: #222;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        .bulk-action-btn:hover {
+            background: #0288d1;
+            color: #fff;
+        }
+        .view-options {
+            display: flex;
+            gap: 16px;
+        }
+        .view-toggle {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #fff;
+            cursor: pointer;
+        }
+        .candidate-notes {
+            margin-top: 16px;
+            padding-top: 16px;
+            border-top: 1px solid #444;
+        }
+        .notes-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+        .notes-header h4 {
+            margin: 0;
+            color: #4fc3f7;
+        }
+        .add-note-btn {
+            padding: 6px 12px;
+            border: none;
+            border-radius: 4px;
+            background: #4fc3f7;
+            color: #222;
+            cursor: pointer;
+            font-size: 0.9em;
+        }
+        .note-item {
+            background: #1a1f28;
+            padding: 12px;
+            border-radius: 4px;
+            margin-bottom: 8px;
+        }
+        .note-content {
+            color: #fff;
+            margin-bottom: 8px;
+        }
+        .note-meta {
+            font-size: 0.8em;
+            color: #888;
+        }
+        .email-templates {
+            margin-top: 16px;
+            padding-top: 16px;
+            border-top: 1px solid #444;
+        }
+        .template-header h4 {
+            margin: 0 0 12px 0;
+            color: #4fc3f7;
+        }
+        .template-list {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .template-btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            background: #2a323d;
+            color: #fff;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .template-btn:hover {
+            background: #4fc3f7;
+            color: #222;
+        }
+        .recruit-card {
+            position: relative;
+        }
+        .recruit-card .checkbox-wrapper {
+            position: absolute;
+            top: 16px;
+            left: 16px;
+        }
+        .recruit-card .checkbox-wrapper input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+        }
     </style>
 </head>
 <body>
@@ -639,7 +1140,7 @@ $applicants_result = $applicants_stmt->get_result();
             <button type="button" class="candidate-list" onclick="openCandidateModal()">Candidate List</button>
             <button type="button" class="resume">Resume</button>
             <button type="button" class="interview" onclick="openInterviewModal()">Interview</button>
-            <button type="button" class="recruit">Recruit</button>
+            <button type="button" class="recruit" onclick="openRecruitModal()">Recruit</button>
         </div>
     </div>
     <div class="posted-jobs">
@@ -651,6 +1152,10 @@ $applicants_result = $applicants_stmt->get_result();
                 if ($_GET['success'] === 'deleted') echo 'Job deleted successfully!';
                 if ($_GET['success'] === 'posted') echo 'Job posted successfully!';
                 if ($_GET['success'] === 'interview_updated') echo 'Interview status updated successfully!';
+                if ($_GET['success'] === 'recruit_updated') echo 'Recruitment status updated successfully!';
+                if ($_GET['success'] === 'note_added') echo 'Note added successfully!';
+                if ($_GET['success'] === 'email_sent') echo 'Email sent successfully!';
+                if ($_GET['success'] === 'bulk_updated') echo 'Bulk actions applied successfully!';
                 ?>
             </div>
         <?php endif; ?>
@@ -663,9 +1168,11 @@ $applicants_result = $applicants_stmt->get_result();
                         <div class="job-info"><b>Requirements:</b> <?php echo htmlspecialchars($job['requirements']); ?></div>
                         <div class="job-info"><b>Salary:</b> <?php echo htmlspecialchars($job['salary']); ?></div>
                         <div class="job-info"><b>Address:</b> <?php echo htmlspecialchars($job['address']); ?></div>
+                        <div class="job-info"><b>Hours of Duty:</b> <?php echo htmlspecialchars($job['hours_of_duty'] ?? ''); ?></div>
+                        <div class="job-info"><b>Job Type:</b> <?php echo htmlspecialchars($job['job_type'] ?? ''); ?></div>
                         <div class="job-info"><b>Posted:</b> <?php echo date('Y-m-d H:i:s', strtotime($job['created_at'])); ?></div>
                         <div class="job-actions">
-                            <button class="edit-btn" onclick="openEditModal(<?php echo $job['id']; ?>, '<?php echo htmlspecialchars($job['job']); ?>', '<?php echo htmlspecialchars($job['company']); ?>', '<?php echo htmlspecialchars($job['requirements']); ?>', '<?php echo htmlspecialchars($job['salary']); ?>', '<?php echo htmlspecialchars($job['address']); ?>')">Edit</button>
+                            <button class="edit-btn" onclick="openEditModal(<?php echo $job['id']; ?>, '<?php echo htmlspecialchars($job['job']); ?>', '<?php echo htmlspecialchars($job['company']); ?>', '<?php echo htmlspecialchars($job['requirements']); ?>', '<?php echo htmlspecialchars($job['salary']); ?>', '<?php echo htmlspecialchars($job['address']); ?>', '<?php echo htmlspecialchars($job['hours_of_duty'] ?? ''); ?>', '<?php echo htmlspecialchars($job['job_type'] ?? ''); ?>')">Edit</button>
                             <form method="POST" style="display:inline;" onsubmit="return confirm('Are you sure you want to delete this job posting?');">
                                 <input type="hidden" name="delete_job" value="<?php echo $job['id']; ?>">
                                 <button type="submit" class="delete-btn">Delete</button>
@@ -706,6 +1213,17 @@ $applicants_result = $applicants_stmt->get_result();
                     <label for="address">Address</label>
                     <input type="text" id="address" name="address" required>
                 </div>
+                <div>
+                    <label for="hours_of_duty">Hours of Duty</label>
+                    <input type="text" id="hours_of_duty" name="hours_of_duty" required>
+                </div>
+                <div>
+                    <label for="job_type">Job Type</label>
+                    <select id="job_type" name="job_type" required>
+                        <option value="Full Time">Full Time</option>
+                        <option value="Part Time">Part Time</option>
+                    </select>
+                </div>
                 <div class="modal-buttons">
                     <button type="submit" name="post_new_job" style="background: #4fc3f7; color: #222;">Post Job</button>
                     <button type="button" onclick="closePostModal()" style="background: #666; color: #fff;">Cancel</button>
@@ -739,6 +1257,17 @@ $applicants_result = $applicants_stmt->get_result();
                 <div style="margin-bottom: 16px;">
                     <label style="display: block; margin-bottom: 8px;">Address</label>
                     <input type="text" name="address" id="edit_address" required style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #444; background: #2a323d; color: #fff;">
+                </div>
+                <div style="margin-bottom: 16px;">
+                    <label style="display: block; margin-bottom: 8px;">Hours of Duty</label>
+                    <input type="text" name="hours_of_duty" id="edit_hours_of_duty" required style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #444; background: #2a323d; color: #fff;">
+                </div>
+                <div style="margin-bottom: 16px;">
+                    <label style="display: block; margin-bottom: 8px;">Job Type</label>
+                    <select name="job_type" id="edit_job_type" required style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #444; background: #2a323d; color: #fff;">
+                        <option value="Full Time">Full Time</option>
+                        <option value="Part Time">Part Time</option>
+                    </select>
                 </div>
                 <div style="display: flex; gap: 12px;">
                     <button type="submit" style="flex: 1; padding: 12px; background: #4fc3f7; color: #222; border: none; border-radius: 4px; cursor: pointer;">Save Changes</button>
@@ -850,14 +1379,202 @@ $applicants_result = $applicants_stmt->get_result();
         </div>
     </div>
 
+    <!-- Recruit Modal -->
+    <div id="recruitModal" class="modal">
+        <div class="modal-content" style="max-width: 800px;">
+            <h2>Recruitment Management</h2>
+            <div class="recruit-filters">
+                <div class="filter-group">
+                    <select id="statusFilter" onchange="filterRecruits()">
+                        <option value="all">All Statuses</option>
+                        <option value="Pending">Pending</option>
+                        <option value="Offer Sent">Offer Sent</option>
+                        <option value="Offer Accepted">Offer Accepted</option>
+                        <option value="Offer Declined">Offer Declined</option>
+                        <option value="Onboarding">Onboarding</option>
+                        <option value="Hired">Hired</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <select id="jobTypeFilter" onchange="filterRecruits()">
+                        <option value="all">All Job Types</option>
+                        <option value="Full Time">Full Time</option>
+                        <option value="Part Time">Part Time</option>
+                    </select>
+                </div>
+            </div>
+            <div class="recruit-stats">
+                <div class="stat-box">
+                    <div class="number" id="totalCandidates">0</div>
+                    <div class="label">Total Candidates</div>
+                </div>
+                <div class="stat-box">
+                    <div class="number" id="activeOffers">0</div>
+                    <div class="label">Active Offers</div>
+                </div>
+                <div class="stat-box">
+                    <div class="number" id="hiredCount">0</div>
+                    <div class="label">Hired</div>
+                </div>
+                <div class="stat-box">
+                    <div class="number" id="pendingCount">0</div>
+                    <div class="label">Pending</div>
+                </div>
+            </div>
+            <div class="recruit-tools">
+                <div class="bulk-actions">
+                    <select id="bulkAction" class="bulk-select">
+                        <option value="">Bulk Actions</option>
+                        <option value="send_offer">Send Offer to Selected</option>
+                        <option value="mark_hired">Mark as Hired</option>
+                        <option value="mark_declined">Mark as Declined</option>
+                    </select>
+                    <button onclick="executeBulkAction()" class="bulk-action-btn">Apply</button>
+                </div>
+                <div class="view-options">
+                    <label class="view-toggle">
+                        <input type="checkbox" id="showNotes" onchange="toggleNotes()">
+                        Show Notes
+                    </label>
+                    <label class="view-toggle">
+                        <input type="checkbox" id="showEmail" onchange="toggleEmail()">
+                        Show Email Templates
+                    </label>
+                </div>
+            </div>
+            <div class="recruit-list">
+                <?php 
+                // Reset the result pointer
+                $applicants_result->data_seek(0);
+                if ($applicants_result->num_rows > 0): 
+                ?>
+                    <?php while ($applicant = $applicants_result->fetch_assoc()): ?>
+                        <div class="recruit-card">
+                            <div class="recruit-header">
+                                <h3><?php echo htmlspecialchars($applicant['name']); ?></h3>
+                                <div class="status-container">
+                                    <span class="recruit-status <?php echo strtolower(str_replace(' ', '-', $applicant['status3'] ?? 'pending')); ?>">
+                                        <?php echo htmlspecialchars($applicant['status3'] ?? 'Pending'); ?>
+                                    </span>
+                                </div>
+                            </div>
+                            <div class="recruit-details">
+                                <p><strong>Position:</strong> <?php echo htmlspecialchars($applicant['job_title']); ?></p>
+                                <p><strong>Company:</strong> <?php echo htmlspecialchars($applicant['company']); ?></p>
+                                <p><strong>Contact:</strong> <?php echo htmlspecialchars($applicant['email']); ?> | <?php echo htmlspecialchars($applicant['phone']); ?></p>
+                                <p><strong>Current Status:</strong> <?php echo htmlspecialchars($applicant['status1']); ?></p>
+                                <p><strong>Interview Status:</strong> <?php echo htmlspecialchars($applicant['status2'] ?? 'Not Set'); ?></p>
+                            </div>
+                            <div class="recruit-actions">
+                                <form method="POST" class="recruit-form">
+                                    <input type="hidden" name="applicant_id" value="<?php echo $applicant['id']; ?>">
+                                    <div class="recruit-form-grid">
+                                        <div class="form-group">
+                                            <label>Recruitment Status</label>
+                                            <select name="recruit_status" class="recruit-select">
+                                                <option value="Pending" <?php echo ($applicant['status3'] ?? '') === 'Pending' ? 'selected' : ''; ?>>Pending</option>
+                                                <option value="Offer Sent" <?php echo ($applicant['status3'] ?? '') === 'Offer Sent' ? 'selected' : ''; ?>>Offer Sent</option>
+                                                <option value="Offer Accepted" <?php echo ($applicant['status3'] ?? '') === 'Offer Accepted' ? 'selected' : ''; ?>>Offer Accepted</option>
+                                                <option value="Offer Declined" <?php echo ($applicant['status3'] ?? '') === 'Offer Declined' ? 'selected' : ''; ?>>Offer Declined</option>
+                                                <option value="Onboarding" <?php echo ($applicant['status3'] ?? '') === 'Onboarding' ? 'selected' : ''; ?>>Onboarding</option>
+                                                <option value="Hired" <?php echo ($applicant['status3'] ?? '') === 'Hired' ? 'selected' : ''; ?>>Hired</option>
+                                            </select>
+                                        </div>
+                                        <div class="form-group">
+                                            <label>Offer Details</label>
+                                            <textarea name="offer_details" class="recruit-textarea" placeholder="Enter offer details (salary, benefits, start date, etc.)"><?php echo htmlspecialchars($applicant['offer_details'] ?? ''); ?></textarea>
+                                        </div>
+                                        <div class="form-group">
+                                            <label>Recruitment Notes</label>
+                                            <textarea name="recruitment_notes" class="recruit-textarea" placeholder="Add any notes about the recruitment process"><?php echo htmlspecialchars($applicant['recruitment_notes'] ?? ''); ?></textarea>
+                                        </div>
+                                    </div>
+                                    <div class="recruit-form-footer">
+                                        <button type="submit" name="update_recruit_status" class="update-recruit-btn">Update Status</button>
+                                    </div>
+                                </form>
+                            </div>
+                            <div class="recruit-timestamp">
+                                Last updated: <?php echo date('M d, Y H:i', strtotime($applicant['last_updated'] ?? $applicant['created_at'])); ?>
+                            </div>
+                            <div class="recruit-history">
+                                <div class="history-item">
+                                    <strong>Application Status:</strong> <?php echo htmlspecialchars($applicant['status1']); ?> 
+                                    (<?php echo date('M d, Y', strtotime($applicant['created_at'])); ?>)
+                                </div>
+                                <?php if (!empty($applicant['status2'])): ?>
+                                    <div class="history-item">
+                                        <strong>Interview Status:</strong> <?php echo htmlspecialchars($applicant['status2']); ?>
+                                    </div>
+                                <?php endif; ?>
+                                <?php if (!empty($applicant['status3'])): ?>
+                                    <div class="history-item">
+                                        <strong>Recruitment Status:</strong> <?php echo htmlspecialchars($applicant['status3']); ?>
+                                    </div>
+                                <?php endif; ?>
+                            </div>
+                            <div class="quick-actions">
+                                <button type="button" class="quick-action-btn offer" onclick="quickAction(<?php echo $applicant['id']; ?>, 'Offer Sent')">Send Offer</button>
+                                <button type="button" class="quick-action-btn hire" onclick="quickAction(<?php echo $applicant['id']; ?>, 'Hired')">Mark as Hired</button>
+                                <button type="button" class="quick-action-btn decline" onclick="quickAction(<?php echo $applicant['id']; ?>, 'Offer Declined')">Decline</button>
+                            </div>
+                            <div class="candidate-notes" style="display: none;">
+                                <div class="notes-header">
+                                    <h4>Candidate Notes</h4>
+                                    <button onclick="addNote(<?php echo $applicant['id']; ?>)" class="add-note-btn">Add Note</button>
+                                </div>
+                                <div class="notes-list" id="notes-<?php echo $applicant['id']; ?>">
+                                    <?php
+                                    $notes_sql = "SELECT * FROM candidate_notes WHERE applicant_id = ? ORDER BY created_at DESC";
+                                    $notes_stmt = $conn->prepare($notes_sql);
+                                    $notes_stmt->bind_param("i", $applicant['id']);
+                                    $notes_stmt->execute();
+                                    $notes_result = $notes_stmt->get_result();
+                                    while ($note = $notes_result->fetch_assoc()):
+                                    ?>
+                                        <div class="note-item">
+                                            <div class="note-content"><?php echo htmlspecialchars($note['note']); ?></div>
+                                            <div class="note-meta">
+                                                <span class="note-date"><?php echo date('M d, Y H:i', strtotime($note['created_at'])); ?></span>
+                                            </div>
+                                        </div>
+                                    <?php endwhile; ?>
+                                </div>
+                            </div>
+                            <div class="email-templates" style="display: none;">
+                                <div class="template-header">
+                                    <h4>Email Templates</h4>
+                                </div>
+                                <div class="template-list">
+                                    <button onclick="useTemplate(<?php echo $applicant['id']; ?>, 'offer')" class="template-btn">Offer Letter</button>
+                                    <button onclick="useTemplate(<?php echo $applicant['id']; ?>, 'interview')" class="template-btn">Interview Invitation</button>
+                                    <button onclick="useTemplate(<?php echo $applicant['id']; ?>, 'rejection')" class="template-btn">Rejection Letter</button>
+                                </div>
+                            </div>
+                        </div>
+                    <?php endwhile; ?>
+                <?php else: ?>
+                    <div class="no-recruits">
+                        No candidates available for recruitment.
+                    </div>
+                <?php endif; ?>
+            </div>
+            <div class="modal-buttons">
+                <button type="button" onclick="closeRecruitModal()" style="background: #666; color: #fff;">Close</button>
+            </div>
+        </div>
+    </div>
+
     <script>
-        function openEditModal(id, title, company, requirements, salary, address) {
+        function openEditModal(id, title, company, requirements, salary, address, hours_of_duty, job_type) {
             document.getElementById('edit_job_id').value = id;
             document.getElementById('edit_job_title').value = title;
             document.getElementById('edit_company').value = company;
             document.getElementById('edit_requirements').value = requirements;
             document.getElementById('edit_salary').value = salary;
             document.getElementById('edit_address').value = address;
+            document.getElementById('edit_hours_of_duty').value = hours_of_duty || '';
+            document.getElementById('edit_job_type').value = job_type || 'Full Time';
             document.getElementById('editModal').style.display = 'block';
         }
 
@@ -874,7 +1591,11 @@ $applicants_result = $applicants_stmt->get_result();
         }
 
         function openCandidateModal() {
-            document.getElementById('candidateModal').style.display = 'block';
+            const modal = document.getElementById('candidateModal');
+            if (modal) {
+                modal.style.display = 'block';
+                document.body.style.overflow = 'hidden'; // Prevent background scrolling
+            }
         }
 
         function closeCandidateModal() {
@@ -882,11 +1603,37 @@ $applicants_result = $applicants_stmt->get_result();
         }
 
         function openInterviewModal() {
-            document.getElementById('interviewModal').style.display = 'block';
+            const modal = document.getElementById('interviewModal');
+            if (modal) {
+                modal.style.display = 'block';
+                document.body.style.overflow = 'hidden';
+            }
         }
 
         function closeInterviewModal() {
             document.getElementById('interviewModal').style.display = 'none';
+        }
+
+        function openRecruitModal() {
+            const modal = document.getElementById('recruitModal');
+            if (modal) {
+                modal.style.display = 'block';
+                document.body.style.overflow = 'hidden';
+                // Reset filters when opening modal
+                const statusFilter = document.getElementById('statusFilter');
+                const jobTypeFilter = document.getElementById('jobTypeFilter');
+                if (statusFilter) statusFilter.value = 'all';
+                if (jobTypeFilter) jobTypeFilter.value = 'all';
+                if (typeof filterRecruits === 'function') filterRecruits();
+                if (typeof updateStats === 'function') updateStats();
+            }
+        }
+
+        function closeRecruitModal() {
+            const modal = document.getElementById('recruitModal');
+            if (modal) {
+                modal.style.display = 'none';
+            }
         }
 
         function updateStatus(applicantId, statusField) {
@@ -907,18 +1654,396 @@ $applicants_result = $applicants_stmt->get_result();
 
         // Close modals when clicking outside
         window.onclick = function(event) {
-            if (event.target == document.getElementById('postModal')) {
-                closePostModal();
+            const modals = ['postModal', 'editModal', 'candidateModal', 'interviewModal', 'recruitModal'];
+            modals.forEach(modalId => {
+                const modal = document.getElementById(modalId);
+                if (event.target === modal) {
+                    switch(modalId) {
+                        case 'postModal':
+                            closePostModal();
+                            break;
+                        case 'editModal':
+                            closeEditModal();
+                            break;
+                        case 'candidateModal':
+                            closeCandidateModal();
+                            break;
+                        case 'interviewModal':
+                            closeInterviewModal();
+                            break;
+                        case 'recruitModal':
+                            closeRecruitModal();
+                            break;
+                    }
+                }
+            });
+        }
+
+        function filterRecruits() {
+            const statusFilter = document.getElementById('statusFilter').value;
+            const jobTypeFilter = document.getElementById('jobTypeFilter').value;
+            const cards = document.querySelectorAll('.recruit-card');
+            
+            cards.forEach(card => {
+                const status = card.querySelector('.recruit-status').textContent;
+                const jobType = card.querySelector('.recruit-details p:nth-child(1)').textContent;
+                
+                const statusMatch = statusFilter === 'all' || status === statusFilter;
+                const jobTypeMatch = jobTypeFilter === 'all' || jobType.includes(jobTypeFilter);
+                
+                card.style.display = statusMatch && jobTypeMatch ? 'block' : 'none';
+            });
+            
+            updateStats();
+        }
+
+        function searchRecruits() {
+            const searchText = document.getElementById('recruitSearch').value.toLowerCase();
+            const cards = document.querySelectorAll('.recruit-card');
+            
+            cards.forEach(card => {
+                const text = card.textContent.toLowerCase();
+                const isVisible = text.includes(searchText);
+                card.style.display = isVisible ? 'block' : 'none';
+            });
+            
+            updateStats();
+        }
+
+        function sortRecruits() {
+            const sortBy = document.getElementById('sortRecruits').value;
+            const container = document.querySelector('.recruit-list');
+            const cards = Array.from(container.querySelectorAll('.recruit-card'));
+            
+            cards.sort((a, b) => {
+                switch(sortBy) {
+                    case 'newest':
+                        return new Date(b.querySelector('.recruit-timestamp').textContent) - 
+                               new Date(a.querySelector('.recruit-timestamp').textContent);
+                    case 'oldest':
+                        return new Date(a.querySelector('.recruit-timestamp').textContent) - 
+                               new Date(b.querySelector('.recruit-timestamp').textContent);
+                    case 'name':
+                        return a.querySelector('h3').textContent.localeCompare(b.querySelector('h3').textContent);
+                    case 'status':
+                        return a.querySelector('.recruit-status').textContent.localeCompare(b.querySelector('.recruit-status').textContent);
+                }
+            });
+            
+            cards.forEach(card => container.appendChild(card));
+        }
+
+        function quickAction(applicantId, status) {
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.innerHTML = `
+                <input type="hidden" name="applicant_id" value="${applicantId}">
+                <input type="hidden" name="recruit_status" value="${status}">
+                <input type="hidden" name="update_recruit_status" value="1">
+            `;
+            document.body.appendChild(form);
+            form.submit();
+        }
+
+        function updateStats() {
+            const cards = document.querySelectorAll('.recruit-card');
+            const visibleCards = Array.from(cards).filter(card => card.style.display !== 'none');
+            
+            document.getElementById('totalCandidates').textContent = visibleCards.length;
+            document.getElementById('activeOffers').textContent = 
+                visibleCards.filter(card => card.querySelector('.recruit-status').textContent === 'Offer Sent').length;
+            document.getElementById('hiredCount').textContent = 
+                visibleCards.filter(card => card.querySelector('.recruit-status').textContent === 'Hired').length;
+            document.getElementById('pendingCount').textContent = 
+                visibleCards.filter(card => card.querySelector('.recruit-status').textContent === 'Pending').length;
+        }
+
+        function toggleNotes() {
+            const notesSections = document.querySelectorAll('.candidate-notes');
+            notesSections.forEach(section => {
+                section.style.display = document.getElementById('showNotes').checked ? 'block' : 'none';
+            });
+        }
+
+        function toggleEmail() {
+            const emailSections = document.querySelectorAll('.email-templates');
+            emailSections.forEach(section => {
+                section.style.display = document.getElementById('showEmail').checked ? 'block' : 'none';
+            });
+        }
+
+        function addNote(applicantId) {
+            const note = prompt('Enter your note:');
+            if (note) {
+                const form = document.createElement('form');
+                form.method = 'POST';
+                form.innerHTML = `
+                    <input type="hidden" name="applicant_id" value="${applicantId}">
+                    <input type="hidden" name="note" value="${note}">
+                    <input type="hidden" name="add_note" value="1">
+                `;
+                document.body.appendChild(form);
+                form.submit();
             }
-            if (event.target == document.getElementById('editModal')) {
-                closeEditModal();
+        }
+
+        function useTemplate(applicantId, templateType) {
+            const templates = {
+                offer: {
+                    subject: 'Job Offer - [Position]',
+                    body: `Dear [Candidate Name],
+
+We are pleased to offer you the position of [Position] at [Company]. 
+
+Details of the offer:
+- Position: [Position]
+- Salary: [Salary]
+- Start Date: [Start Date]
+- Benefits: [Benefits]
+
+Please review the attached offer letter and let us know your decision.
+
+Best regards,
+[Your Name]`
+                },
+                interview: {
+                    subject: 'Interview Invitation - [Position]',
+                    body: `Dear [Candidate Name],
+
+Thank you for your application for the [Position] position. We would like to invite you for an interview.
+
+Interview Details:
+- Date: [Date]
+- Time: [Time]
+- Location: [Location/Platform]
+- Duration: [Duration]
+
+Please confirm your availability.
+
+Best regards,
+[Your Name]`
+                },
+                rejection: {
+                    subject: 'Application Status - [Position]',
+                    body: `Dear [Candidate Name],
+
+Thank you for your interest in the [Position] position and for taking the time to interview with us.
+
+After careful consideration, we have decided to move forward with other candidates whose qualifications more closely match our current needs.
+
+We appreciate your interest in [Company] and wish you success in your job search.
+
+Best regards,
+[Your Name]`
+                }
+            };
+
+            const template = templates[templateType];
+            if (template) {
+                const emailModal = document.createElement('div');
+                emailModal.className = 'modal';
+                emailModal.innerHTML = `
+                    <div class="modal-content" style="max-width: 600px;">
+                        <h2>Email Template</h2>
+                        <div class="email-form">
+                            <div class="form-group">
+                                <label>Subject</label>
+                                <input type="text" id="emailSubject" value="${template.subject}" class="email-input">
+                            </div>
+                            <div class="form-group">
+                                <label>Body</label>
+                                <textarea id="emailBody" class="email-textarea">${template.body}</textarea>
+                            </div>
+                            <div class="modal-buttons">
+                                <button onclick="sendEmail(${applicantId})" class="send-email-btn">Send Email</button>
+                                <button onclick="this.closest('.modal').remove()" class="cancel-btn">Cancel</button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                document.body.appendChild(emailModal);
             }
-            if (event.target == document.getElementById('candidateModal')) {
-                closeCandidateModal();
+        }
+
+        function sendEmail(applicantId) {
+            const subject = document.getElementById('emailSubject').value;
+            const body = document.getElementById('emailBody').value;
+            
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.innerHTML = `
+                <input type="hidden" name="applicant_id" value="${applicantId}">
+                <input type="hidden" name="email_subject" value="${subject}">
+                <input type="hidden" name="email_body" value="${body}">
+                <input type="hidden" name="send_email" value="1">
+            `;
+            document.body.appendChild(form);
+            form.submit();
+        }
+
+        function executeBulkAction() {
+            const action = document.getElementById('bulkAction').value;
+            if (!action) return;
+
+            const selectedCards = document.querySelectorAll('.recruit-card input[type="checkbox"]:checked');
+            if (selectedCards.length === 0) {
+                alert('Please select at least one candidate');
+                return;
             }
-            if (event.target == document.getElementById('interviewModal')) {
-                closeInterviewModal();
+
+            const applicantIds = Array.from(selectedCards).map(checkbox => checkbox.value);
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.innerHTML = `
+                <input type="hidden" name="bulk_action" value="${action}">
+                <input type="hidden" name="applicant_ids" value="${applicantIds.join(',')}">
+            `;
+            document.body.appendChild(form);
+            form.submit();
+        }
+
+        function openResumeModal() {
+            const modal = document.getElementById('resumeModal');
+            if (modal) {
+                modal.style.display = 'block';
+            } else {
+                alert('Resume functionality coming soon!');
             }
+        }
+
+        function closeResumeModal() {
+            const modal = document.getElementById('resumeModal');
+            if (modal) {
+                modal.style.display = 'none';
+            }
+        }
+
+        // Add keyboard support for closing modals
+        document.addEventListener('keydown', function(event) {
+            if (event.key === 'Escape') {
+                const modals = ['postModal', 'editModal', 'candidateModal', 'interviewModal', 'recruitModal'];
+                modals.forEach(modalId => {
+                    const modal = document.getElementById(modalId);
+                    if (modal && modal.style.display === 'block') {
+                        switch(modalId) {
+                            case 'postModal':
+                                closePostModal();
+                                break;
+                            case 'editModal':
+                                closeEditModal();
+                                break;
+                            case 'candidateModal':
+                                closeCandidateModal();
+                                break;
+                            case 'interviewModal':
+                                closeInterviewModal();
+                                break;
+                            case 'recruitModal':
+                                closeRecruitModal();
+                                break;
+                        }
+                    }
+                });
+            }
+        });
+
+        // Ensure all buttons have proper hover and active states
+        document.addEventListener('DOMContentLoaded', function() {
+            const buttons = document.querySelectorAll('button');
+            buttons.forEach(button => {
+                button.addEventListener('mousedown', function() {
+                    this.style.transform = 'translateY(0)';
+                    this.style.boxShadow = '0 2px 6px rgba(0,0,0,0.1)';
+                });
+                button.addEventListener('mouseup', function() {
+                    this.style.transform = 'translateY(-2px)';
+                    this.style.boxShadow = '0 4px 12px rgba(0,0,0,0.2)';
+                });
+                button.addEventListener('mouseleave', function() {
+                    this.style.transform = '';
+                    this.style.boxShadow = '';
+                });
+            });
+        });
+
+        // Add this to your existing JavaScript
+        document.addEventListener('DOMContentLoaded', function() {
+            // Add click handlers to all dashboard action buttons
+            const dashboardButtons = document.querySelectorAll('.dashboard-actions button');
+            dashboardButtons.forEach(button => {
+                button.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    const action = this.getAttribute('onclick');
+                    if (action) {
+                        // Execute the onclick action
+                        eval(action);
+                    }
+                });
+            });
+
+            // Add touch support for mobile devices
+            dashboardButtons.forEach(button => {
+                button.addEventListener('touchstart', function(e) {
+                    this.style.transform = 'translateY(0)';
+                    this.style.boxShadow = '0 2px 6px rgba(0,0,0,0.1)';
+                });
+                button.addEventListener('touchend', function(e) {
+                    this.style.transform = 'translateY(-2px)';
+                    this.style.boxShadow = '0 4px 12px rgba(0,0,0,0.2)';
+                });
+            });
+        });
+
+        // Update the modal functions to ensure they work properly
+        function openCandidateModal() {
+            const modal = document.getElementById('candidateModal');
+            if (modal) {
+                modal.style.display = 'block';
+                document.body.style.overflow = 'hidden'; // Prevent background scrolling
+            }
+        }
+
+        function openInterviewModal() {
+            const modal = document.getElementById('interviewModal');
+            if (modal) {
+                modal.style.display = 'block';
+                document.body.style.overflow = 'hidden';
+            }
+        }
+
+        function openRecruitModal() {
+            const modal = document.getElementById('recruitModal');
+            if (modal) {
+                modal.style.display = 'block';
+                document.body.style.overflow = 'hidden';
+                // Reset filters when opening modal
+                const statusFilter = document.getElementById('statusFilter');
+                const jobTypeFilter = document.getElementById('jobTypeFilter');
+                if (statusFilter) statusFilter.value = 'all';
+                if (jobTypeFilter) jobTypeFilter.value = 'all';
+                if (typeof filterRecruits === 'function') filterRecruits();
+                if (typeof updateStats === 'function') updateStats();
+            }
+        }
+
+        // Update modal close functions
+        function closeModal(modalId) {
+            const modal = document.getElementById(modalId);
+            if (modal) {
+                modal.style.display = 'none';
+                document.body.style.overflow = ''; // Restore scrolling
+            }
+        }
+
+        // Update the window click handler
+        window.onclick = function(event) {
+            const modals = ['postModal', 'editModal', 'candidateModal', 'interviewModal', 'recruitModal'];
+            modals.forEach(modalId => {
+                const modal = document.getElementById(modalId);
+                if (event.target === modal) {
+                    closeModal(modalId);
+                }
+            });
         }
     </script>
 </body>
