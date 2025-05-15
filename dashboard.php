@@ -339,12 +339,8 @@ $applicants_result = $applicants_stmt->get_result();
             transition: all 0.2s;
             display: inline-block;
             text-decoration: none;
-        }
-        .job-card .post-btn:hover {
-            background: #0288d1;
-            color: #fff;
-            transform: translateY(-2px);
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            opacity: 0.5;
+            cursor: not-allowed;
         }
         .dashboard-actions {
             display: flex;
@@ -1160,7 +1156,7 @@ $applicants_result = $applicants_stmt->get_result();
             <div class="job-details">
                 <div>Fill in the details below to post a new job opening.</div>
             </div>
-            <button type="button" class="post-btn" id="postNewJobBtn">Post New Job</button>
+            <button type="button" class="post-btn" id="postNewJobBtn" disabled style="opacity:0.5;cursor:not-allowed;">Post New Job</button>
         </div>
         <div class="dashboard-actions">
     
@@ -1212,50 +1208,6 @@ $applicants_result = $applicants_stmt->get_result();
         </div>
     </div>
 
-    <!-- Post New Job Modal -->
-    <div id="postModal" class="modal" style="display: none;">
-        <div class="modal-content">
-            <h2>Post New Job</h2>
-            <form method="POST" id="postForm">
-                <div>
-                    <label for="job_title">Job Title</label>
-                    <input type="text" id="job_title" name="job_title" required>
-                </div>
-                <div>
-                    <label for="company">Company</label>
-                    <input type="text" id="company" name="company" required>
-                </div>
-                <div>
-                    <label for="requirements">Requirements</label>
-                    <textarea id="requirements" name="requirements" required></textarea>
-                </div>
-                <div>
-                    <label for="salary">Salary</label>
-                    <input type="text" id="salary" name="salary" required>
-                </div>
-                <div>
-                    <label for="address">Address</label>
-                    <input type="text" id="address" name="address" required>
-                </div>
-                <div>
-                    <label for="hours_of_duty">Hours of Duty</label>
-                    <input type="text" id="hours_of_duty" name="hours_of_duty" required>
-                </div>
-                <div>
-                    <label for="job_type">Job Type</label>
-                    <select id="job_type" name="job_type" required>
-                        <option value="Full Time">Full Time</option>
-                        <option value="Part Time">Part Time</option>
-                    </select>
-                </div>
-                <div class="modal-buttons">
-                    <button type="submit" name="post_new_job" style="background: #4fc3f7; color: #222;">Post Job</button>
-                    <button type="button" onclick="closePostModal()" style="background: #666; color: #fff;">Cancel</button>
-                </div>
-            </form>
-        </div>
-    </div>
-
     <!-- Edit Job Modal -->
     <div id="editModal" class="modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 1000;">
         <div class="modal-content" style="background: #232a34; padding: 24px; border-radius: 12px; width: 90%; max-width: 500px; margin: 48px auto; color: #fff;">
@@ -1296,6 +1248,51 @@ $applicants_result = $applicants_stmt->get_result();
                 <div style="display: flex; gap: 12px;">
                     <button type="submit" style="flex: 1; padding: 12px; background: #4fc3f7; color: #222; border: none; border-radius: 4px; cursor: pointer;">Save Changes</button>
                     <button type="button" onclick="closeEditModal()" style="flex: 1; padding: 12px; background: #666; color: #fff; border: none; border-radius: 4px; cursor: pointer;">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Post New Job Modal -->
+    <div id="postModal" class="modal">
+        <div class="modal-content" style="background: #232a34; padding: 24px; border-radius: 12px; width: 90%; max-width: 500px; margin: 48px auto; color: #fff;">
+            <h2 style="margin-top: 0; color: #4fc3f7;">Post New Job</h2>
+            <form method="POST" id="postJobForm">
+                <input type="hidden" name="post_new_job" value="1">
+                <div style="margin-bottom: 16px;">
+                    <label style="display: block; margin-bottom: 8px;">Job Title</label>
+                    <input type="text" name="job_title" required style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #444; background: #2a323d; color: #fff;">
+                </div>
+                <div style="margin-bottom: 16px;">
+                    <label style="display: block; margin-bottom: 8px;">Company</label>
+                    <input type="text" name="company" required style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #444; background: #2a323d; color: #fff;">
+                </div>
+                <div style="margin-bottom: 16px;">
+                    <label style="display: block; margin-bottom: 8px;">Requirements</label>
+                    <textarea name="requirements" required style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #444; background: #2a323d; color: #fff; min-height: 100px;"></textarea>
+                </div>
+                <div style="margin-bottom: 16px;">
+                    <label style="display: block; margin-bottom: 8px;">Salary</label>
+                    <input type="text" name="salary" required style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #444; background: #2a323d; color: #fff;">
+                </div>
+                <div style="margin-bottom: 16px;">
+                    <label style="display: block; margin-bottom: 8px;">Address</label>
+                    <input type="text" name="address" required style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #444; background: #2a323d; color: #fff;">
+                </div>
+                <div style="margin-bottom: 16px;">
+                    <label style="display: block; margin-bottom: 8px;">Hours of Duty</label>
+                    <input type="text" name="hours_of_duty" required style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #444; background: #2a323d; color: #fff;">
+                </div>
+                <div style="margin-bottom: 16px;">
+                    <label style="display: block; margin-bottom: 8px;">Job Type</label>
+                    <select name="job_type" required style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #444; background: #2a323d; color: #fff;">
+                        <option value="Full Time">Full Time</option>
+                        <option value="Part Time">Part Time</option>
+                    </select>
+                </div>
+                <div style="display: flex; gap: 12px;">
+                    <button type="submit" style="flex: 1; padding: 12px; background: #4fc3f7; color: #222; border: none; border-radius: 4px; cursor: pointer;">Post Job</button>
+                    <button type="button" onclick="closePostModal()" style="flex: 1; padding: 12px; background: #666; color: #fff; border: none; border-radius: 4px; cursor: pointer;">Cancel</button>
                 </div>
             </form>
         </div>
@@ -1354,241 +1351,6 @@ $applicants_result = $applicants_stmt->get_result();
         </div>
     </div>
 
-    <!-- Interview Management Modal -->
-    <div id="interviewModal" class="modal">
-        <div class="modal-content" style="max-width: 800px;">
-            <h2>Interview Management</h2>
-            <div class="interview-list">
-                <?php 
-                // Reset the result pointer
-                $applicants_result->data_seek(0);
-                if ($applicants_result->num_rows > 0): 
-                ?>
-                    <?php while ($applicant = $applicants_result->fetch_assoc()): ?>
-                        <div class="interview-card">
-                            <div class="interview-header">
-                                <h3><?php echo htmlspecialchars($applicant['name']); ?></h3>
-                                <div class="status-container">
-                                    <span class="interview-status <?php echo strtolower(str_replace(' ', '-', $applicant['status2'] ?? 'pending')); ?>">
-                                        <?php echo htmlspecialchars($applicant['status2'] ?? 'Pending'); ?>
-                                    </span>
-                                </div>
-                            </div>
-                            <div class="interview-details">
-                                <p><strong>Position:</strong> <?php echo htmlspecialchars($applicant['job_title']); ?></p>
-                                <p><strong>Company:</strong> <?php echo htmlspecialchars($applicant['company']); ?></p>
-                                <p><strong>Contact:</strong> <?php echo htmlspecialchars($applicant['email']); ?> | <?php echo htmlspecialchars($applicant['phone']); ?></p>
-                            </div>
-                            <div class="interview-actions">
-                                <form method="POST" class="status-form">
-                                    <input type="hidden" name="applicant_id" value="<?php echo $applicant['id']; ?>">
-                                    <select name="interview_status" class="status-select">
-                                        <option value="Pending" <?php echo ($applicant['status2'] ?? '') === 'Pending' ? 'selected' : ''; ?>>Pending</option>
-                                        <option value="Interviewed" <?php echo ($applicant['status2'] ?? '') === 'Interviewed' ? 'selected' : ''; ?>>Interviewed</option>
-                                    </select>
-                                    <button type="submit" name="update_interview_status" class="update-interview-btn">Update Status</button>
-                                </form>
-                            </div>
-                        </div>
-                    <?php endwhile; ?>
-                <?php else: ?>
-                    <div class="no-interviews">
-                        No candidates available for interview.
-                    </div>
-                <?php endif; ?>
-            </div>
-            <div class="modal-buttons">
-                <button type="button" onclick="closeInterviewModal()" style="background: #666; color: #fff;">Close</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Recruit Modal -->
-    <div id="recruitModal" class="modal">
-        <div class="modal-content" style="max-width: 800px;">
-            <h2>Recruitment Management</h2>
-            <div class="recruit-filters">
-                <div class="filter-group">
-                    <select id="statusFilter" onchange="filterRecruits()">
-                        <option value="all">All Statuses</option>
-                        <option value="Pending">Pending</option>
-                        <option value="Offer Sent">Offer Sent</option>
-                        <option value="Offer Accepted">Offer Accepted</option>
-                        <option value="Offer Declined">Offer Declined</option>
-                        <option value="Onboarding">Onboarding</option>
-                        <option value="Hired">Hired</option>
-                    </select>
-                </div>
-                <div class="filter-group">
-                    <select id="jobTypeFilter" onchange="filterRecruits()">
-                        <option value="all">All Job Types</option>
-                        <option value="Full Time">Full Time</option>
-                        <option value="Part Time">Part Time</option>
-                    </select>
-                </div>
-            </div>
-            <div class="recruit-stats">
-                <div class="stat-box">
-                    <div class="number" id="totalCandidates">0</div>
-                    <div class="label">Total Candidates</div>
-                </div>
-                <div class="stat-box">
-                    <div class="number" id="activeOffers">0</div>
-                    <div class="label">Active Offers</div>
-                </div>
-                <div class="stat-box">
-                    <div class="number" id="hiredCount">0</div>
-                    <div class="label">Hired</div>
-                </div>
-                <div class="stat-box">
-                    <div class="number" id="pendingCount">0</div>
-                    <div class="label">Pending</div>
-                </div>
-            </div>
-            <div class="recruit-tools">
-                <div class="bulk-actions">
-                    <select id="bulkAction" class="bulk-select">
-                        <option value="">Bulk Actions</option>
-                        <option value="send_offer">Send Offer to Selected</option>
-                        <option value="mark_hired">Mark as Hired</option>
-                        <option value="mark_declined">Mark as Declined</option>
-                    </select>
-                    <button onclick="executeBulkAction()" class="bulk-action-btn">Apply</button>
-                </div>
-                <div class="view-options">
-                    <label class="view-toggle">
-                        <input type="checkbox" id="showNotes" onchange="toggleNotes()">
-                        Show Notes
-                    </label>
-                    <label class="view-toggle">
-                        <input type="checkbox" id="showEmail" onchange="toggleEmail()">
-                        Show Email Templates
-                    </label>
-                </div>
-            </div>
-            <div class="recruit-list">
-                <?php 
-                // Reset the result pointer
-                $applicants_result->data_seek(0);
-                if ($applicants_result->num_rows > 0): 
-                ?>
-                    <?php while ($applicant = $applicants_result->fetch_assoc()): ?>
-                        <div class="recruit-card">
-                            <div class="recruit-header">
-                                <h3><?php echo htmlspecialchars($applicant['name']); ?></h3>
-                                <div class="status-container">
-                                    <span class="recruit-status <?php echo strtolower(str_replace(' ', '-', $applicant['status3'] ?? 'pending')); ?>">
-                                        <?php echo htmlspecialchars($applicant['status3'] ?? 'Pending'); ?>
-                                    </span>
-                                </div>
-                            </div>
-                            <div class="recruit-details">
-                                <p><strong>Position:</strong> <?php echo htmlspecialchars($applicant['job_title']); ?></p>
-                                <p><strong>Company:</strong> <?php echo htmlspecialchars($applicant['company']); ?></p>
-                                <p><strong>Contact:</strong> <?php echo htmlspecialchars($applicant['email']); ?> | <?php echo htmlspecialchars($applicant['phone']); ?></p>
-                                <p><strong>Current Status:</strong> <?php echo htmlspecialchars($applicant['status1']); ?></p>
-                                <p><strong>Interview Status:</strong> <?php echo htmlspecialchars($applicant['status2'] ?? 'Not Set'); ?></p>
-                            </div>
-                            <div class="recruit-actions">
-                                <form method="POST" class="recruit-form">
-                                    <input type="hidden" name="applicant_id" value="<?php echo $applicant['id']; ?>">
-                                    <div class="recruit-form-grid">
-                                        <div class="form-group">
-                                            <label>Recruitment Status</label>
-                                            <select name="recruit_status" class="recruit-select">
-                                                <option value="Pending" <?php echo ($applicant['status3'] ?? '') === 'Pending' ? 'selected' : ''; ?>>Pending</option>
-                                                <option value="Offer Sent" <?php echo ($applicant['status3'] ?? '') === 'Offer Sent' ? 'selected' : ''; ?>>Offer Sent</option>
-                                                <option value="Offer Accepted" <?php echo ($applicant['status3'] ?? '') === 'Offer Accepted' ? 'selected' : ''; ?>>Offer Accepted</option>
-                                                <option value="Offer Declined" <?php echo ($applicant['status3'] ?? '') === 'Offer Declined' ? 'selected' : ''; ?>>Offer Declined</option>
-                                                <option value="Onboarding" <?php echo ($applicant['status3'] ?? '') === 'Onboarding' ? 'selected' : ''; ?>>Onboarding</option>
-                                                <option value="Hired" <?php echo ($applicant['status3'] ?? '') === 'Hired' ? 'selected' : ''; ?>>Hired</option>
-                                            </select>
-                                        </div>
-                                        <div class="form-group">
-                                            <label>Offer Details</label>
-                                            <textarea name="offer_details" class="recruit-textarea" placeholder="Enter offer details (salary, benefits, start date, etc.)"><?php echo htmlspecialchars($applicant['offer_details'] ?? ''); ?></textarea>
-                                        </div>
-                                        <div class="form-group">
-                                            <label>Recruitment Notes</label>
-                                            <textarea name="recruitment_notes" class="recruit-textarea" placeholder="Add any notes about the recruitment process"><?php echo htmlspecialchars($applicant['recruitment_notes'] ?? ''); ?></textarea>
-                                        </div>
-                                    </div>
-                                    <div class="recruit-form-footer">
-                                        <button type="submit" name="update_recruit_status" class="update-recruit-btn">Update Status</button>
-                                    </div>
-                                </form>
-                            </div>
-                            <div class="recruit-timestamp">
-                                Last updated: <?php echo date('M d, Y H:i', strtotime($applicant['last_updated'] ?? $applicant['created_at'])); ?>
-                            </div>
-                            <div class="recruit-history">
-                                <div class="history-item">
-                                    <strong>Application Status:</strong> <?php echo htmlspecialchars($applicant['status1']); ?> 
-                                    (<?php echo date('M d, Y', strtotime($applicant['created_at'])); ?>)
-                                </div>
-                                <?php if (!empty($applicant['status2'])): ?>
-                                    <div class="history-item">
-                                        <strong>Interview Status:</strong> <?php echo htmlspecialchars($applicant['status2']); ?>
-                                    </div>
-                                <?php endif; ?>
-                                <?php if (!empty($applicant['status3'])): ?>
-                                    <div class="history-item">
-                                        <strong>Recruitment Status:</strong> <?php echo htmlspecialchars($applicant['status3']); ?>
-                                    </div>
-                                <?php endif; ?>
-                            </div>
-                            <div class="quick-actions">
-                                <button type="button" class="quick-action-btn offer" onclick="quickAction(<?php echo $applicant['id']; ?>, 'Offer Sent')">Send Offer</button>
-                                <button type="button" class="quick-action-btn hire" onclick="quickAction(<?php echo $applicant['id']; ?>, 'Hired')">Mark as Hired</button>
-                                <button type="button" class="quick-action-btn decline" onclick="quickAction(<?php echo $applicant['id']; ?>, 'Offer Declined')">Decline</button>
-                            </div>
-                            <div class="candidate-notes" style="display: none;">
-                                <div class="notes-header">
-                                    <h4>Candidate Notes</h4>
-                                    <button onclick="addNote(<?php echo $applicant['id']; ?>)" class="add-note-btn">Add Note</button>
-                                </div>
-                                <div class="notes-list" id="notes-<?php echo $applicant['id']; ?>">
-                                    <?php
-                                    $notes_sql = "SELECT * FROM candidate_notes WHERE applicant_id = ? ORDER BY created_at DESC";
-                                    $notes_stmt = $conn->prepare($notes_sql);
-                                    $notes_stmt->bind_param("i", $applicant['id']);
-                                    $notes_stmt->execute();
-                                    $notes_result = $notes_stmt->get_result();
-                                    while ($note = $notes_result->fetch_assoc()):
-                                    ?>
-                                        <div class="note-item">
-                                            <div class="note-content"><?php echo htmlspecialchars($note['note']); ?></div>
-                                            <div class="note-meta">
-                                                <span class="note-date"><?php echo date('M d, Y H:i', strtotime($note['created_at'])); ?></span>
-                                            </div>
-                                        </div>
-                                    <?php endwhile; ?>
-                                </div>
-                            </div>
-                            <div class="email-templates" style="display: none;">
-                                <div class="template-header">
-                                    <h4>Email Templates</h4>
-                                </div>
-                                <div class="template-list">
-                                    <button onclick="useTemplate(<?php echo $applicant['id']; ?>, 'offer')" class="template-btn">Offer Letter</button>
-                                    <button onclick="useTemplate(<?php echo $applicant['id']; ?>, 'interview')" class="template-btn">Interview Invitation</button>
-                                    <button onclick="useTemplate(<?php echo $applicant['id']; ?>, 'rejection')" class="template-btn">Rejection Letter</button>
-                                </div>
-                            </div>
-                        </div>
-                    <?php endwhile; ?>
-                <?php else: ?>
-                    <div class="no-recruits">
-                        No candidates available for recruitment.
-                    </div>
-                <?php endif; ?>
-            </div>
-            <div class="modal-buttons">
-                <button type="button" onclick="closeRecruitModal()" style="background: #666; color: #fff;">Close</button>
-            </div>
-        </div>
-    </div>
-
     <div class="footer">
         <a href="#">Security & Privacy</a>
         <a href="#">Terms and Condition</a>
@@ -1597,15 +1359,30 @@ $applicants_result = $applicants_stmt->get_result();
     </div>
 
     <script>
-        // Show the Post New Job modal
+        // Enable the Post New Job button and open the modal
+        document.getElementById('postNewJobBtn').disabled = false;
+        document.getElementById('postNewJobBtn').style.opacity = '1';
+        document.getElementById('postNewJobBtn').style.cursor = 'pointer';
+
         document.getElementById('postNewJobBtn').onclick = function() {
             document.getElementById('postModal').style.display = 'block';
         };
 
-        // Close the Post New Job modal
         function closePostModal() {
             document.getElementById('postModal').style.display = 'none';
         }
+
+        // Optional: Close modals when clicking outside modal content
+        window.onclick = function(event) {
+            var postModal = document.getElementById('postModal');
+            var editModal = document.getElementById('editModal');
+            if (event.target === postModal) {
+                postModal.style.display = 'none';
+            }
+            if (event.target === editModal) {
+                editModal.style.display = 'none';
+            }
+        };
 
         // Show the Edit Job modal and fill in the form
         function openEditModal(id, job, company, requirements, salary, address, hours_of_duty, job_type) {
@@ -1624,18 +1401,6 @@ $applicants_result = $applicants_stmt->get_result();
         function closeEditModal() {
             document.getElementById('editModal').style.display = 'none';
         }
-
-        // Optional: Close modals when clicking outside modal content
-        window.onclick = function(event) {
-            var postModal = document.getElementById('postModal');
-            var editModal = document.getElementById('editModal');
-            if (event.target === postModal) {
-                postModal.style.display = 'none';
-            }
-            if (event.target === editModal) {
-                editModal.style.display = 'none';
-            }
-        };
     </script>
 </body>
 </html>
