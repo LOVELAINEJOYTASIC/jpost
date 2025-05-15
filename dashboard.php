@@ -1159,8 +1159,7 @@ $applicants_result = $applicants_stmt->get_result();
             <button type="button" class="post-btn" id="postNewJobBtn" disabled style="opacity:0.5;cursor:not-allowed;">Post New Job</button>
         </div>
         <div class="dashboard-actions">
-    
-          
+            <button type="button" class="candidate-list" onclick="openCandidateModal()">View Candidate List</button>
         </div>
     </div>
     <div class="posted-jobs">
@@ -1304,7 +1303,10 @@ $applicants_result = $applicants_stmt->get_result();
             <h2>Candidate List</h2>
             <div class="candidates-list">
                 <?php if ($applicants_result->num_rows > 0): ?>
-                    <?php while ($applicant = $applicants_result->fetch_assoc()): ?>
+                    <?php
+                    // Reset pointer if needed (in case you looped before)
+                    $applicants_result->data_seek(0);
+                    while ($applicant = $applicants_result->fetch_assoc()): ?>
                         <div class="candidate-card">
                             <div class="candidate-header">
                                 <h3><?php echo htmlspecialchars($applicant['name']); ?></h3>
@@ -1400,6 +1402,13 @@ $applicants_result = $applicants_stmt->get_result();
         // Close the Edit Job modal
         function closeEditModal() {
             document.getElementById('editModal').style.display = 'none';
+        }
+
+        function openCandidateModal() {
+            document.getElementById('candidateModal').style.display = 'block';
+        }
+        function closeCandidateModal() {
+            document.getElementById('candidateModal').style.display = 'none';
         }
     </script>
 </body>
