@@ -797,7 +797,7 @@ if ($stats_result && $stats_result->num_rows > 0) {
         <div class="sidebar">
             <a class="sidebar-btn" href="job_postings.php">Job Postings</a>
             <a class="sidebar-btn" href="candidate_list.php">Candidate List</a>
-            <a class="sidebar-btn" href="resume_parsing.php">Resume Parsing</a>
+            <button class="sidebar-btn" type="button" onclick="openResumeModal()">Resume Parsing</button>
             <a class="sidebar-btn" href="reports.php">Reports</a>
         </div>
     </div>
@@ -832,6 +832,44 @@ if ($stats_result && $stats_result->num_rows > 0) {
         </div>
     </div>
 
+    <!-- Resume Parsing Modal -->
+    <div id="resumeModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Resume Parsing</h2>
+                <button class="close-modal" onclick="closeResumeModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <table style="width:100%; border-collapse:collapse;">
+                    <tr>
+                        <th style="text-align:left; padding:8px;">Applicant</th>
+                        <th style="text-align:left; padding:8px;">Resume</th>
+                    </tr>
+                    <?php
+                    // Fetch all applicants with resumes
+                    $resume_sql = "SELECT a.name, up.resume_file FROM applicants a
+                                   LEFT JOIN user_profiles up ON a.user_id = up.user_id
+                                   WHERE up.resume_file IS NOT NULL AND up.resume_file != ''";
+                    $resume_result = $conn->query($resume_sql);
+                    if ($resume_result && $resume_result->num_rows > 0):
+                        while ($row = $resume_result->fetch_assoc()):
+                    ?>
+                    <tr>
+                        <td style="padding:8px;"><?php echo htmlspecialchars($row['name']); ?></td>
+                        <td style="padding:8px;">
+                            <a href="<?php echo htmlspecialchars($row['resume_file']); ?>" target="_blank" style="color:#4fc3f7;text-decoration:underline;">View/Download</a>
+                        </td>
+                    </tr>
+                    <?php endwhile; else: ?>
+                    <tr>
+                        <td colspan="2" style="padding:8px; color:#888;">No resumes uploaded yet.</td>
+                    </tr>
+                    <?php endif; ?>
+                </table>
+            </div>
+        </div>
+    </div>
+
     <!-- Footer -->
     <div class="footer">
         <a href="#">Security & Privacy</a>
@@ -851,12 +889,21 @@ if ($stats_result && $stats_result->num_rows > 0) {
         document.getElementById('editModal').style.display = 'none';
     }
 
+    function openResumeModal() {
+        document.getElementById('resumeModal').style.display = 'block';
+    }
+
+    function closeResumeModal() {
+        document.getElementById('resumeModal').style.display = 'none';
+    }
+
     // Close modal when clicking outside
     window.onclick = function(event) {
-        if (event.target == document.getElementById('editModal')) {
-            closeEditModal();
-        }
-    }
+        var editModal = document.getElementById('editModal');
+        var resumeModal = document.getElementById('resumeModal');
+        if (event.target === editModal) closeEditModal();
+        if (event.target === resumeModal) closeResumeModal();
+    };
     </script>
 </body>
-</html> 
+</html>

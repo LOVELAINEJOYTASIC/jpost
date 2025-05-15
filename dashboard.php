@@ -1160,6 +1160,8 @@ $applicants_result = $applicants_stmt->get_result();
         </div>
         <div class="dashboard-actions">
             <button type="button" class="candidate-list" onclick="openCandidateModal()">View Candidate List</button>
+            <button type="button" class="interview" onclick="openInterviewModal()">View Interview List</button>
+            <button type="button" class="recruit" onclick="openRecruitModal()">View Recruit List</button>
         </div>
     </div>
     <div class="posted-jobs">
@@ -1353,6 +1355,102 @@ $applicants_result = $applicants_stmt->get_result();
         </div>
     </div>
 
+    <!-- Interview List Modal -->
+    <div id="interviewModal" class="modal">
+        <div class="modal-content" style="max-width: 800px;">
+            <h2>Interview List</h2>
+            <div class="interview-list">
+                <?php
+                // Only show applicants with status1 = 'Interview'
+                $applicants_result->data_seek(0);
+                $has_interviews = false;
+                while ($applicant = $applicants_result->fetch_assoc()):
+                    if (strtolower($applicant['status1']) === 'interview'):
+                        $has_interviews = true;
+                ?>
+                    <div class="interview-card">
+                        <div class="interview-header">
+                            <h3><?php echo htmlspecialchars($applicant['name']); ?></h3>
+                            <span class="interview-status"><?php echo htmlspecialchars($applicant['status1']); ?></span>
+                        </div>
+                        <div class="interview-details">
+                            <p><strong>Applied for:</strong> <?php echo htmlspecialchars($applicant['job_title']); ?></p>
+                            <p><strong>Company:</strong> <?php echo htmlspecialchars($applicant['company']); ?></p>
+                            <p><strong>Email:</strong> <?php echo htmlspecialchars($applicant['email']); ?></p>
+                            <p><strong>Phone:</strong> <?php echo htmlspecialchars($applicant['phone']); ?></p>
+                            <p><strong>Applied on:</strong> <?php echo date('Y-m-d H:i:s', strtotime($applicant['created_at'])); ?></p>
+                        </div>
+                        <div class="interview-actions">
+                            <form method="POST" class="status-form">
+                                <input type="hidden" name="applicant_id" value="<?php echo $applicant['id']; ?>">
+                                <select name="interview_status" class="status-select" required>
+                                    <option value="">Update Interview Status</option>
+                                    <option value="Interviewed" <?php if($applicant['status2']=='Interviewed') echo 'selected'; ?>>Interviewed</option>
+                                    <option value="Pending" <?php if($applicant['status2']=='Pending') echo 'selected'; ?>>Pending</option>
+                                    <option value="Rejected" <?php if($applicant['status2']=='Rejected') echo 'selected'; ?>>Rejected</option>
+                                </select>
+                                <button type="submit" name="update_interview_status" class="update-interview-btn">Update</button>
+                            </form>
+                        </div>
+                    </div>
+                <?php
+                    endif;
+                endwhile;
+                if (!$has_interviews):
+                ?>
+                    <div class="no-interviews">No candidates scheduled for interview yet.</div>
+                <?php endif; ?>
+            </div>
+            <div class="modal-buttons">
+                <button type="button" onclick="closeInterviewModal()" style="background: #666; color: #fff;">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Recruit List Modal -->
+    <div id="recruitModal" class="modal">
+        <div class="modal-content" style="max-width: 800px;">
+            <h2>Recruit List</h2>
+            <div class="recruit-list">
+                <?php
+                // Only show applicants with status3 (recruitment) set
+                $applicants_result->data_seek(0);
+                $has_recruits = false;
+                while ($applicant = $applicants_result->fetch_assoc()):
+                    if (!empty($applicant['status3'])):
+                        $has_recruits = true;
+                ?>
+                    <div class="recruit-card">
+                        <div class="recruit-header">
+                            <h3><?php echo htmlspecialchars($applicant['name']); ?></h3>
+                            <span class="recruit-status <?php echo strtolower(str_replace(' ', '-', $applicant['status3'])); ?>">
+                                <?php echo htmlspecialchars($applicant['status3']); ?>
+                            </span>
+                        </div>
+                        <div class="recruit-details">
+                            <p><strong>Applied for:</strong> <?php echo htmlspecialchars($applicant['job_title']); ?></p>
+                            <p><strong>Company:</strong> <?php echo htmlspecialchars($applicant['company']); ?></p>
+                            <p><strong>Email:</strong> <?php echo htmlspecialchars($applicant['email']); ?></p>
+                            <p><strong>Phone:</strong> <?php echo htmlspecialchars($applicant['phone']); ?></p>
+                            <p><strong>Offer Details:</strong> <?php echo htmlspecialchars($applicant['offer_details'] ?? ''); ?></p>
+                            <p><strong>Recruitment Notes:</strong> <?php echo htmlspecialchars($applicant['recruitment_notes'] ?? ''); ?></p>
+                            <p><strong>Last Updated:</strong> <?php echo isset($applicant['last_updated']) ? htmlspecialchars($applicant['last_updated']) : ''; ?></p>
+                        </div>
+                    </div>
+                <?php
+                    endif;
+                endwhile;
+                if (!$has_recruits):
+                ?>
+                    <div class="no-recruits">No candidates in recruitment yet.</div>
+                <?php endif; ?>
+            </div>
+            <div class="modal-buttons">
+                <button type="button" onclick="closeRecruitModal()" style="background: #666; color: #fff;">Close</button>
+            </div>
+        </div>
+    </div>
+
     <div class="footer">
         <a href="#">Security & Privacy</a>
         <a href="#">Terms and Condition</a>
@@ -1378,12 +1476,14 @@ $applicants_result = $applicants_stmt->get_result();
         window.onclick = function(event) {
             var postModal = document.getElementById('postModal');
             var editModal = document.getElementById('editModal');
-            if (event.target === postModal) {
-                postModal.style.display = 'none';
-            }
-            if (event.target === editModal) {
-                editModal.style.display = 'none';
-            }
+            var candidateModal = document.getElementById('candidateModal');
+            var interviewModal = document.getElementById('interviewModal');
+            var recruitModal = document.getElementById('recruitModal');
+            if (event.target === postModal) postModal.style.display = 'none';
+            if (event.target === editModal) editModal.style.display = 'none';
+            if (event.target === candidateModal) candidateModal.style.display = 'none';
+            if (event.target === interviewModal) interviewModal.style.display = 'none';
+            if (event.target === recruitModal) recruitModal.style.display = 'none';
         };
 
         // Show the Edit Job modal and fill in the form
@@ -1409,6 +1509,20 @@ $applicants_result = $applicants_stmt->get_result();
         }
         function closeCandidateModal() {
             document.getElementById('candidateModal').style.display = 'none';
+        }
+
+        function openInterviewModal() {
+            document.getElementById('interviewModal').style.display = 'block';
+        }
+        function closeInterviewModal() {
+            document.getElementById('interviewModal').style.display = 'none';
+        }
+
+        function openRecruitModal() {
+            document.getElementById('recruitModal').style.display = 'block';
+        }
+        function closeRecruitModal() {
+            document.getElementById('recruitModal').style.display = 'none';
         }
     </script>
 </body>
