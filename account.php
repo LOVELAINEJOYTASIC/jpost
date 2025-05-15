@@ -44,6 +44,25 @@ if ($check_column->num_rows === 0) {
     $conn->query("ALTER TABLE user_profiles ADD COLUMN resume_file VARCHAR(255) AFTER avatar");
 }
 
+// Create or update job_applications table with resume_uploaded column
+$conn->query("CREATE TABLE IF NOT EXISTS job_applications (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    job_id INT NOT NULL,
+    status VARCHAR(50) DEFAULT 'Pending',
+    resume_uploaded TINYINT(1) DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE
+)");
+
+// Check if resume_uploaded column exists, if not add it
+$check_column = $conn->query("SHOW COLUMNS FROM job_applications LIKE 'resume_uploaded'");
+if ($check_column->num_rows === 0) {
+    $conn->query("ALTER TABLE job_applications ADD COLUMN resume_uploaded TINYINT(1) DEFAULT 0");
+}
+
 $success_message = '';
 $error_message = '';
 
@@ -110,7 +129,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     
     // Handle resume upload
     if (isset($_FILES['resume']) && $_FILES['resume']['error'] === UPLOAD_ERR_OK) {
-        $uploads_dir = 'uploads';
+        $uploads_dir = 'uploads/resumes';
         if (!is_dir($uploads_dir)) {
             mkdir($uploads_dir, 0777, true);
         }
@@ -123,17 +142,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $target = "$uploads_dir/$filename";
                 if (move_uploaded_file($tmp_name, $target)) {
                     $resume_path = $target;
-                    if (isset($profile['resume_file']) && $profile['resume_file'] && file_exists($profile['resume_file'])) {
-                        unlink($profile['resume_file']);
+                    // Update resume_file in user_profiles
+                    $update_sql = "UPDATE user_profiles SET resume_file = ? WHERE user_id = ?";
+                    $update_stmt = $conn->prepare($update_sql);
+                    $update_stmt->bind_param("si", $resume_path, $user_id);
+                    if ($update_stmt->execute()) {
+                        $success_message = "Resume uploaded successfully!";
+                        // Update resume status in job_applications
+                        $update_applications = "UPDATE job_applications SET resume_uploaded = 1 WHERE user_id = ?";
+                        $update_apps_stmt = $conn->prepare($update_applications);
+                        $update_apps_stmt->bind_param("i", $user_id);
+                        $update_apps_stmt->execute();
+                        $update_apps_stmt->close();
+                    } else {
+                        $error_message = "Error updating resume information";
                     }
+                    $update_stmt->close();
                 } else {
-                    $errors[] = "Failed to upload resume";
+                    $error_message = "Failed to upload resume";
                 }
             } else {
-                $errors[] = "Resume size should be less than 10MB";
+                $error_message = "Resume size should be less than 10MB";
             }
         } else {
-            $errors[] = "Invalid resume format. Allowed: pdf, doc, docx";
+            $error_message = "Invalid resume format. Allowed: pdf, doc, docx";
         }
     }
     
@@ -515,10 +547,17 @@ $stmt->close();
                     <li>*Application Letter (skills/position): <textarea name="application" required style="width:90%;padding:4px 8px;margin:4px 0;border-radius:8px;border:none;resize:vertical;"><?php echo htmlspecialchars($application); ?></textarea></li>
                     <li>*Resume (PDF, DOC, DOCX): 
                         <?php if ($profile && !empty($profile['resume_file'])): ?>
-                            <a href="<?php echo htmlspecialchars($profile['resume_file']); ?>" target="_blank" class="resume-link">View/Download Resume</a><br>
+                            <div style="margin: 8px 0;">
+                                <a href="<?php echo htmlspecialchars($profile['resume_file']); ?>" target="_blank" class="resume-link" style="color: #4fc3f7; text-decoration: underline; margin-right: 12px;">View/Download Resume</a>
+                                <span style="color: #4caf50; font-size: 0.9em;">✓ Resume uploaded</span>
+                            </div>
+                        <?php else: ?>
+                            <div style="margin: 8px 0; color: #f44336; font-size: 0.9em;">No resume uploaded yet</div>
                         <?php endif; ?>
-                        <input type="file" name="resume" accept=".pdf,.doc,.docx" style="margin-top:4px;">
-                        <button type="submit" name="save_resume" value="1" style="margin-left:8px;padding:4px 16px;border-radius:8px;background:#4fc3f7;color:#222;font-weight:bold;border:none;cursor:pointer;">Save Resume</button>
+                        <div style="margin-top: 8px;">
+                            <input type="file" name="resume" accept=".pdf,.doc,.docx" style="margin-right: 8px;">
+                            <button type="submit" name="upload_resume" value="1" style="padding: 6px 16px; border-radius: 8px; background: #4fc3f7; color: #222; font-weight: bold; border: none; cursor: pointer;">Upload Resume</button>
+                        </div>
                     </li>
                 </ul>
                 <button type="submit" style="margin-top:10px;padding:8px 24px;border-radius:8px;background:#4fc3f7;color:#222;font-weight:bold;border:none;cursor:pointer;">Update Profile</button>
@@ -581,6 +620,37 @@ avatarInput.addEventListener('change', function(e) {
             avatarPreview.src = ev.target.result;
         };
         reader.readAsDataURL(file);
+    }
+});
+
+// Add this to your existing JavaScript
+document.addEventListener('DOMContentLoaded', function() {
+    const resumeInput = document.querySelector('input[name="resume"]');
+    const uploadButton = document.querySelector('button[name="upload_resume"]');
+    
+    if (resumeInput && uploadButton) {
+        resumeInput.addEventListener('change', function() {
+            const file = this.files[0];
+            if (file) {
+                // Check file size
+                if (file.size > 10 * 1024 * 1024) {
+                    alert('File size should be less than 10MB');
+                    this.value = '';
+                    return;
+                }
+                
+                // Check file type
+                const allowedTypes = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+                if (!allowedTypes.includes(file.type)) {
+                    alert('Please upload a PDF or Word document');
+                    this.value = '';
+                    return;
+                }
+                
+                // Enable upload button
+                uploadButton.disabled = false;
+            }
+        });
     }
 });
 </script>

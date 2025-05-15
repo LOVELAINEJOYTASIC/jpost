@@ -671,6 +671,29 @@ if ($stats_result && $stats_result->num_rows > 0) {
         .badge.open { background: #4caf50; color: #fff; }
         .badge.filled { background: #2196f3; color: #fff; }
         .badge.cancelled { background: #f44336; color: #fff; }
+        .footer {
+            width: 100%;
+            background: #181818;
+            border-top: 2px solid #333;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 18px 0 10px 0;
+            position: static;
+            left: 0;
+            bottom: 0;
+            margin-top: 40px;
+        }
+        .footer a {
+            color: #fff;
+            text-decoration: underline;
+            margin: 0 18px;
+            font-size: 1em;
+            transition: color 0.3s ease;
+        }
+        .footer a:hover {
+            color: #4fc3f7;
+        }
     </style>
 </head>
 <body>
@@ -807,6 +830,14 @@ if ($stats_result && $stats_result->num_rows > 0) {
                 </div>
             </form>
         </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="footer">
+        <a href="#">Security & Privacy</a>
+        <a href="#">Terms and Condition</a>
+        <a href="#">About</a>
+        <a href="#">Report</a>
     </div>
 
     <script>

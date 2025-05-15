@@ -369,6 +369,7 @@ $applicants_result = $applicants_stmt->get_result();
             transition: all 0.2s ease;
             outline: none;
             -webkit-tap-highlight-color: transparent;
+            pointer-events: auto;
         }
         .dashboard-actions .candidate-list { 
             background: #7ed957; 
@@ -507,9 +508,11 @@ $applicants_result = $applicants_stmt->get_result();
             padding: 24px;
             border-radius: 12px;
             width: 90%;
-            max-width: 500px;
+            max-width: 800px;
             margin: 48px auto;
             color: #fff;
+            position: relative;
+            z-index: 1001;
         }
         .modal-content h2 {
             margin-top: 0;
@@ -535,6 +538,7 @@ $applicants_result = $applicants_stmt->get_result();
         .modal-buttons {
             display: flex;
             gap: 12px;
+            margin-top: 20px;
         }
         .modal-buttons button {
             flex: 1;
@@ -542,6 +546,7 @@ $applicants_result = $applicants_stmt->get_result();
             border: none;
             border-radius: 4px;
             cursor: pointer;
+            font-weight: bold;
         }
         .success-message {
             background: #4caf50;
@@ -1112,6 +1117,27 @@ $applicants_result = $applicants_stmt->get_result();
             height: 18px;
             cursor: pointer;
         }
+        .footer {
+            width: 100%;
+            background: #181818;
+            border-top: 2px solid #333;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 18px 0;
+            position: fixed;
+            bottom: 0;
+            left: 0;
+        }
+        .footer a {
+            color: #fff;
+            text-decoration: underline;
+            margin: 0 18px;
+            font-size: 1em;
+        }
+        .footer a:hover {
+            color: #4fc3f7;
+        }
     </style>
 </head>
 <body>
@@ -1129,16 +1155,16 @@ $applicants_result = $applicants_stmt->get_result();
     </div>
     <div class="dashboard-container">
         <div class="job-card">
-            <img src="https://i.ibb.co/6bQ6Q0k/professional-woman.png" alt="Professional Woman" class="profile-image">
+            <img src="https://cdn.dribbble.com/userupload/19543520/file/original-d33225063d5eb06e3ee96ccf2334a0a3.gif" alt="Professional Woman" class="profile-image">
             <h2>Post a Job</h2>
             <div class="job-details">
                 <div>Fill in the details below to post a new job opening.</div>
             </div>
-            <button type="button" class="post-btn" onclick="openPostModal()">Post New Job</button>
+            <button type="button" class="post-btn" id="postNewJobBtn">Post New Job</button>
         </div>
         <div class="dashboard-actions">
             <button type="button" class="candidate-list" onclick="openCandidateModal()">Candidate List</button>
-            <button type="button" class="resume">Resume</button>
+            <button type="button" class="resume" onclick="openResumeModal()">Resume</button>
             <button type="button" class="interview" onclick="openInterviewModal()">Interview</button>
             <button type="button" class="recruit" onclick="openRecruitModal()">Recruit</button>
         </div>
@@ -1189,7 +1215,7 @@ $applicants_result = $applicants_stmt->get_result();
     </div>
 
     <!-- Post New Job Modal -->
-    <div id="postModal" class="modal">
+    <div id="postModal" class="modal" style="display: none;">
         <div class="modal-content">
             <h2>Post New Job</h2>
             <form method="POST" id="postForm">
@@ -1565,486 +1591,11 @@ $applicants_result = $applicants_stmt->get_result();
         </div>
     </div>
 
-    <script>
-        function openEditModal(id, title, company, requirements, salary, address, hours_of_duty, job_type) {
-            document.getElementById('edit_job_id').value = id;
-            document.getElementById('edit_job_title').value = title;
-            document.getElementById('edit_company').value = company;
-            document.getElementById('edit_requirements').value = requirements;
-            document.getElementById('edit_salary').value = salary;
-            document.getElementById('edit_address').value = address;
-            document.getElementById('edit_hours_of_duty').value = hours_of_duty || '';
-            document.getElementById('edit_job_type').value = job_type || 'Full Time';
-            document.getElementById('editModal').style.display = 'block';
-        }
-
-        function closeEditModal() {
-            document.getElementById('editModal').style.display = 'none';
-        }
-
-        function openPostModal() {
-            document.getElementById('postModal').style.display = 'block';
-        }
-
-        function closePostModal() {
-            document.getElementById('postModal').style.display = 'none';
-        }
-
-        function openCandidateModal() {
-            const modal = document.getElementById('candidateModal');
-            if (modal) {
-                modal.style.display = 'block';
-                document.body.style.overflow = 'hidden'; // Prevent background scrolling
-            }
-        }
-
-        function closeCandidateModal() {
-            document.getElementById('candidateModal').style.display = 'none';
-        }
-
-        function openInterviewModal() {
-            const modal = document.getElementById('interviewModal');
-            if (modal) {
-                modal.style.display = 'block';
-                document.body.style.overflow = 'hidden';
-            }
-        }
-
-        function closeInterviewModal() {
-            document.getElementById('interviewModal').style.display = 'none';
-        }
-
-        function openRecruitModal() {
-            const modal = document.getElementById('recruitModal');
-            if (modal) {
-                modal.style.display = 'block';
-                document.body.style.overflow = 'hidden';
-                // Reset filters when opening modal
-                const statusFilter = document.getElementById('statusFilter');
-                const jobTypeFilter = document.getElementById('jobTypeFilter');
-                if (statusFilter) statusFilter.value = 'all';
-                if (jobTypeFilter) jobTypeFilter.value = 'all';
-                if (typeof filterRecruits === 'function') filterRecruits();
-                if (typeof updateStats === 'function') updateStats();
-            }
-        }
-
-        function closeRecruitModal() {
-            const modal = document.getElementById('recruitModal');
-            if (modal) {
-                modal.style.display = 'none';
-            }
-        }
-
-        function updateStatus(applicantId, statusField) {
-            const statuses = [
-                'In Review',
-                'In Process',
-                'Interview',
-                'On Demand',
-                'Accepted',
-                'Cancelled',
-                'In Waiting'
-            ];
-            
-            // Here you would typically make an AJAX call to update the status in the database
-            // For now, we'll just show an alert
-            alert(`Update status for applicant ID: ${applicantId}\nAvailable statuses: ${statuses.join(', ')}`);
-        }
-
-        // Close modals when clicking outside
-        window.onclick = function(event) {
-            const modals = ['postModal', 'editModal', 'candidateModal', 'interviewModal', 'recruitModal'];
-            modals.forEach(modalId => {
-                const modal = document.getElementById(modalId);
-                if (event.target === modal) {
-                    switch(modalId) {
-                        case 'postModal':
-                            closePostModal();
-                            break;
-                        case 'editModal':
-                            closeEditModal();
-                            break;
-                        case 'candidateModal':
-                            closeCandidateModal();
-                            break;
-                        case 'interviewModal':
-                            closeInterviewModal();
-                            break;
-                        case 'recruitModal':
-                            closeRecruitModal();
-                            break;
-                    }
-                }
-            });
-        }
-
-        function filterRecruits() {
-            const statusFilter = document.getElementById('statusFilter').value;
-            const jobTypeFilter = document.getElementById('jobTypeFilter').value;
-            const cards = document.querySelectorAll('.recruit-card');
-            
-            cards.forEach(card => {
-                const status = card.querySelector('.recruit-status').textContent;
-                const jobType = card.querySelector('.recruit-details p:nth-child(1)').textContent;
-                
-                const statusMatch = statusFilter === 'all' || status === statusFilter;
-                const jobTypeMatch = jobTypeFilter === 'all' || jobType.includes(jobTypeFilter);
-                
-                card.style.display = statusMatch && jobTypeMatch ? 'block' : 'none';
-            });
-            
-            updateStats();
-        }
-
-        function searchRecruits() {
-            const searchText = document.getElementById('recruitSearch').value.toLowerCase();
-            const cards = document.querySelectorAll('.recruit-card');
-            
-            cards.forEach(card => {
-                const text = card.textContent.toLowerCase();
-                const isVisible = text.includes(searchText);
-                card.style.display = isVisible ? 'block' : 'none';
-            });
-            
-            updateStats();
-        }
-
-        function sortRecruits() {
-            const sortBy = document.getElementById('sortRecruits').value;
-            const container = document.querySelector('.recruit-list');
-            const cards = Array.from(container.querySelectorAll('.recruit-card'));
-            
-            cards.sort((a, b) => {
-                switch(sortBy) {
-                    case 'newest':
-                        return new Date(b.querySelector('.recruit-timestamp').textContent) - 
-                               new Date(a.querySelector('.recruit-timestamp').textContent);
-                    case 'oldest':
-                        return new Date(a.querySelector('.recruit-timestamp').textContent) - 
-                               new Date(b.querySelector('.recruit-timestamp').textContent);
-                    case 'name':
-                        return a.querySelector('h3').textContent.localeCompare(b.querySelector('h3').textContent);
-                    case 'status':
-                        return a.querySelector('.recruit-status').textContent.localeCompare(b.querySelector('.recruit-status').textContent);
-                }
-            });
-            
-            cards.forEach(card => container.appendChild(card));
-        }
-
-        function quickAction(applicantId, status) {
-            const form = document.createElement('form');
-            form.method = 'POST';
-            form.innerHTML = `
-                <input type="hidden" name="applicant_id" value="${applicantId}">
-                <input type="hidden" name="recruit_status" value="${status}">
-                <input type="hidden" name="update_recruit_status" value="1">
-            `;
-            document.body.appendChild(form);
-            form.submit();
-        }
-
-        function updateStats() {
-            const cards = document.querySelectorAll('.recruit-card');
-            const visibleCards = Array.from(cards).filter(card => card.style.display !== 'none');
-            
-            document.getElementById('totalCandidates').textContent = visibleCards.length;
-            document.getElementById('activeOffers').textContent = 
-                visibleCards.filter(card => card.querySelector('.recruit-status').textContent === 'Offer Sent').length;
-            document.getElementById('hiredCount').textContent = 
-                visibleCards.filter(card => card.querySelector('.recruit-status').textContent === 'Hired').length;
-            document.getElementById('pendingCount').textContent = 
-                visibleCards.filter(card => card.querySelector('.recruit-status').textContent === 'Pending').length;
-        }
-
-        function toggleNotes() {
-            const notesSections = document.querySelectorAll('.candidate-notes');
-            notesSections.forEach(section => {
-                section.style.display = document.getElementById('showNotes').checked ? 'block' : 'none';
-            });
-        }
-
-        function toggleEmail() {
-            const emailSections = document.querySelectorAll('.email-templates');
-            emailSections.forEach(section => {
-                section.style.display = document.getElementById('showEmail').checked ? 'block' : 'none';
-            });
-        }
-
-        function addNote(applicantId) {
-            const note = prompt('Enter your note:');
-            if (note) {
-                const form = document.createElement('form');
-                form.method = 'POST';
-                form.innerHTML = `
-                    <input type="hidden" name="applicant_id" value="${applicantId}">
-                    <input type="hidden" name="note" value="${note}">
-                    <input type="hidden" name="add_note" value="1">
-                `;
-                document.body.appendChild(form);
-                form.submit();
-            }
-        }
-
-        function useTemplate(applicantId, templateType) {
-            const templates = {
-                offer: {
-                    subject: 'Job Offer - [Position]',
-                    body: `Dear [Candidate Name],
-
-We are pleased to offer you the position of [Position] at [Company]. 
-
-Details of the offer:
-- Position: [Position]
-- Salary: [Salary]
-- Start Date: [Start Date]
-- Benefits: [Benefits]
-
-Please review the attached offer letter and let us know your decision.
-
-Best regards,
-[Your Name]`
-                },
-                interview: {
-                    subject: 'Interview Invitation - [Position]',
-                    body: `Dear [Candidate Name],
-
-Thank you for your application for the [Position] position. We would like to invite you for an interview.
-
-Interview Details:
-- Date: [Date]
-- Time: [Time]
-- Location: [Location/Platform]
-- Duration: [Duration]
-
-Please confirm your availability.
-
-Best regards,
-[Your Name]`
-                },
-                rejection: {
-                    subject: 'Application Status - [Position]',
-                    body: `Dear [Candidate Name],
-
-Thank you for your interest in the [Position] position and for taking the time to interview with us.
-
-After careful consideration, we have decided to move forward with other candidates whose qualifications more closely match our current needs.
-
-We appreciate your interest in [Company] and wish you success in your job search.
-
-Best regards,
-[Your Name]`
-                }
-            };
-
-            const template = templates[templateType];
-            if (template) {
-                const emailModal = document.createElement('div');
-                emailModal.className = 'modal';
-                emailModal.innerHTML = `
-                    <div class="modal-content" style="max-width: 600px;">
-                        <h2>Email Template</h2>
-                        <div class="email-form">
-                            <div class="form-group">
-                                <label>Subject</label>
-                                <input type="text" id="emailSubject" value="${template.subject}" class="email-input">
-                            </div>
-                            <div class="form-group">
-                                <label>Body</label>
-                                <textarea id="emailBody" class="email-textarea">${template.body}</textarea>
-                            </div>
-                            <div class="modal-buttons">
-                                <button onclick="sendEmail(${applicantId})" class="send-email-btn">Send Email</button>
-                                <button onclick="this.closest('.modal').remove()" class="cancel-btn">Cancel</button>
-                            </div>
-                        </div>
-                    </div>
-                `;
-                document.body.appendChild(emailModal);
-            }
-        }
-
-        function sendEmail(applicantId) {
-            const subject = document.getElementById('emailSubject').value;
-            const body = document.getElementById('emailBody').value;
-            
-            const form = document.createElement('form');
-            form.method = 'POST';
-            form.innerHTML = `
-                <input type="hidden" name="applicant_id" value="${applicantId}">
-                <input type="hidden" name="email_subject" value="${subject}">
-                <input type="hidden" name="email_body" value="${body}">
-                <input type="hidden" name="send_email" value="1">
-            `;
-            document.body.appendChild(form);
-            form.submit();
-        }
-
-        function executeBulkAction() {
-            const action = document.getElementById('bulkAction').value;
-            if (!action) return;
-
-            const selectedCards = document.querySelectorAll('.recruit-card input[type="checkbox"]:checked');
-            if (selectedCards.length === 0) {
-                alert('Please select at least one candidate');
-                return;
-            }
-
-            const applicantIds = Array.from(selectedCards).map(checkbox => checkbox.value);
-            const form = document.createElement('form');
-            form.method = 'POST';
-            form.innerHTML = `
-                <input type="hidden" name="bulk_action" value="${action}">
-                <input type="hidden" name="applicant_ids" value="${applicantIds.join(',')}">
-            `;
-            document.body.appendChild(form);
-            form.submit();
-        }
-
-        function openResumeModal() {
-            const modal = document.getElementById('resumeModal');
-            if (modal) {
-                modal.style.display = 'block';
-            } else {
-                alert('Resume functionality coming soon!');
-            }
-        }
-
-        function closeResumeModal() {
-            const modal = document.getElementById('resumeModal');
-            if (modal) {
-                modal.style.display = 'none';
-            }
-        }
-
-        // Add keyboard support for closing modals
-        document.addEventListener('keydown', function(event) {
-            if (event.key === 'Escape') {
-                const modals = ['postModal', 'editModal', 'candidateModal', 'interviewModal', 'recruitModal'];
-                modals.forEach(modalId => {
-                    const modal = document.getElementById(modalId);
-                    if (modal && modal.style.display === 'block') {
-                        switch(modalId) {
-                            case 'postModal':
-                                closePostModal();
-                                break;
-                            case 'editModal':
-                                closeEditModal();
-                                break;
-                            case 'candidateModal':
-                                closeCandidateModal();
-                                break;
-                            case 'interviewModal':
-                                closeInterviewModal();
-                                break;
-                            case 'recruitModal':
-                                closeRecruitModal();
-                                break;
-                        }
-                    }
-                });
-            }
-        });
-
-        // Ensure all buttons have proper hover and active states
-        document.addEventListener('DOMContentLoaded', function() {
-            const buttons = document.querySelectorAll('button');
-            buttons.forEach(button => {
-                button.addEventListener('mousedown', function() {
-                    this.style.transform = 'translateY(0)';
-                    this.style.boxShadow = '0 2px 6px rgba(0,0,0,0.1)';
-                });
-                button.addEventListener('mouseup', function() {
-                    this.style.transform = 'translateY(-2px)';
-                    this.style.boxShadow = '0 4px 12px rgba(0,0,0,0.2)';
-                });
-                button.addEventListener('mouseleave', function() {
-                    this.style.transform = '';
-                    this.style.boxShadow = '';
-                });
-            });
-        });
-
-        // Add this to your existing JavaScript
-        document.addEventListener('DOMContentLoaded', function() {
-            // Add click handlers to all dashboard action buttons
-            const dashboardButtons = document.querySelectorAll('.dashboard-actions button');
-            dashboardButtons.forEach(button => {
-                button.addEventListener('click', function(e) {
-                    e.preventDefault();
-                    const action = this.getAttribute('onclick');
-                    if (action) {
-                        // Execute the onclick action
-                        eval(action);
-                    }
-                });
-            });
-
-            // Add touch support for mobile devices
-            dashboardButtons.forEach(button => {
-                button.addEventListener('touchstart', function(e) {
-                    this.style.transform = 'translateY(0)';
-                    this.style.boxShadow = '0 2px 6px rgba(0,0,0,0.1)';
-                });
-                button.addEventListener('touchend', function(e) {
-                    this.style.transform = 'translateY(-2px)';
-                    this.style.boxShadow = '0 4px 12px rgba(0,0,0,0.2)';
-                });
-            });
-        });
-
-        // Update the modal functions to ensure they work properly
-        function openCandidateModal() {
-            const modal = document.getElementById('candidateModal');
-            if (modal) {
-                modal.style.display = 'block';
-                document.body.style.overflow = 'hidden'; // Prevent background scrolling
-            }
-        }
-
-        function openInterviewModal() {
-            const modal = document.getElementById('interviewModal');
-            if (modal) {
-                modal.style.display = 'block';
-                document.body.style.overflow = 'hidden';
-            }
-        }
-
-        function openRecruitModal() {
-            const modal = document.getElementById('recruitModal');
-            if (modal) {
-                modal.style.display = 'block';
-                document.body.style.overflow = 'hidden';
-                // Reset filters when opening modal
-                const statusFilter = document.getElementById('statusFilter');
-                const jobTypeFilter = document.getElementById('jobTypeFilter');
-                if (statusFilter) statusFilter.value = 'all';
-                if (jobTypeFilter) jobTypeFilter.value = 'all';
-                if (typeof filterRecruits === 'function') filterRecruits();
-                if (typeof updateStats === 'function') updateStats();
-            }
-        }
-
-        // Update modal close functions
-        function closeModal(modalId) {
-            const modal = document.getElementById(modalId);
-            if (modal) {
-                modal.style.display = 'none';
-                document.body.style.overflow = ''; // Restore scrolling
-            }
-        }
-
-        // Update the window click handler
-        window.onclick = function(event) {
-            const modals = ['postModal', 'editModal', 'candidateModal', 'interviewModal', 'recruitModal'];
-            modals.forEach(modalId => {
-                const modal = document.getElementById(modalId);
-                if (event.target === modal) {
-                    closeModal(modalId);
-                }
-            });
-        }
-    </script>
+    <div class="footer">
+        <a href="#">Security & Privacy</a>
+        <a href="#">Terms and Condition</a>
+        <a href="#">About</a>
+        <a href="#">Report</a>
+    </div>
 </body>
 </html> 

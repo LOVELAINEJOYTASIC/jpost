@@ -70,7 +70,7 @@ if ($selected_job_id) {
     // For now, show global stages (future: allow per-job workflows)
     $sql = "SELECT * FROM workflow_stages ORDER BY stage_order ASC";
 } else {
-    $sql = "SELECT * FROM workflow_stages ORDER BY stage_order ASC";
+$sql = "SELECT * FROM workflow_stages ORDER BY stage_order ASC";
 }
 $result = $conn->query($sql);
 $stages = $result ? $result->fetch_all(MYSQLI_ASSOC) : [];
@@ -288,7 +288,7 @@ if ($selected_job_id) {
     </div>
     <div class="container">
         <a href="admin.php" style="display:inline-block; margin-bottom:24px; background:#4fc3f7; color:#181818; padding:10px 28px; border-radius:8px; text-decoration:none; font-weight:600; font-size:1.1em; box-shadow:0 2px 8px rgba(0,0,0,0.10); transition:background 0.2s, color 0.2s;">&larr; Back to Admin Dashboard</a>
-        <h1>Workflow Management</h1>
+    <h1>Workflow Management</h1>
         <form method="GET" style="margin-bottom:24px; text-align:center;">
             <label for="job_id" style="color:#4fc3f7; font-weight:600; margin-right:8px;">Select Job:</label>
             <select name="job_id" id="job_id" onchange="this.form.submit()" style="padding:8px 16px; border-radius:6px; font-size:1em;">
