@@ -1163,10 +1163,8 @@ $applicants_result = $applicants_stmt->get_result();
             <button type="button" class="post-btn" id="postNewJobBtn">Post New Job</button>
         </div>
         <div class="dashboard-actions">
-            <button type="button" class="candidate-list" onclick="openCandidateModal()">Candidate List</button>
-            <button type="button" class="resume" onclick="openResumeModal()">Resume</button>
-            <button type="button" class="interview" onclick="openInterviewModal()">Interview</button>
-            <button type="button" class="recruit" onclick="openRecruitModal()">Recruit</button>
+    
+          
         </div>
     </div>
     <div class="posted-jobs">
@@ -1597,5 +1595,47 @@ $applicants_result = $applicants_stmt->get_result();
         <a href="#">About</a>
         <a href="#">Report</a>
     </div>
+
+    <script>
+        // Show the Post New Job modal
+        document.getElementById('postNewJobBtn').onclick = function() {
+            document.getElementById('postModal').style.display = 'block';
+        };
+
+        // Close the Post New Job modal
+        function closePostModal() {
+            document.getElementById('postModal').style.display = 'none';
+        }
+
+        // Show the Edit Job modal and fill in the form
+        function openEditModal(id, job, company, requirements, salary, address, hours_of_duty, job_type) {
+            document.getElementById('edit_job_id').value = id;
+            document.getElementById('edit_job_title').value = job;
+            document.getElementById('edit_company').value = company;
+            document.getElementById('edit_requirements').value = requirements;
+            document.getElementById('edit_salary').value = salary;
+            document.getElementById('edit_address').value = address;
+            document.getElementById('edit_hours_of_duty').value = hours_of_duty;
+            document.getElementById('edit_job_type').value = job_type;
+            document.getElementById('editModal').style.display = 'block';
+        }
+
+        // Close the Edit Job modal
+        function closeEditModal() {
+            document.getElementById('editModal').style.display = 'none';
+        }
+
+        // Optional: Close modals when clicking outside modal content
+        window.onclick = function(event) {
+            var postModal = document.getElementById('postModal');
+            var editModal = document.getElementById('editModal');
+            if (event.target === postModal) {
+                postModal.style.display = 'none';
+            }
+            if (event.target === editModal) {
+                editModal.style.display = 'none';
+            }
+        };
+    </script>
 </body>
-</html> 
+</html>
