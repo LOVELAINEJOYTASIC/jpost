@@ -15,6 +15,12 @@ if ($check_column->num_rows == 0) {
     $conn->query("ALTER TABLE users ADD COLUMN status ENUM('active', 'offline') DEFAULT 'offline'");
 }
 
+// Ensure 'notes' column exists (MySQL compatible way)
+$check_notes = $conn->query("SHOW COLUMNS FROM users LIKE 'notes'");
+if ($check_notes->num_rows == 0) {
+    $conn->query("ALTER TABLE users ADD COLUMN notes TEXT NULL");
+}
+
 // Handle delete functionality
 if (isset($_POST['delete_user'])) {
     $user_id = (int)$_POST['delete_user'];
@@ -42,6 +48,21 @@ if (isset($_POST['edit_user'])) {
         exit();
     }
     $update_stmt->close();
+
+    $update = $conn->prepare("UPDATE users SET notes=? WHERE id=?");
+    $update->bind_param("si", $notes, $user_id);
+    $update->execute();
+}
+
+// Handle save notes functionality
+if (isset($_POST['save_notes'])) {
+    $user_id = (int)$_POST['user_id'];
+    $notes = $_POST['notes'];
+    $stmt = $conn->prepare("UPDATE users SET notes=? WHERE id=?");
+    $stmt->bind_param("si", $notes, $user_id);
+    $stmt->execute();
+    $stmt->close();
+    // Optionally, redirect or show a success message
 }
 
 // Fetch all jobseeker users with their profiles
@@ -233,6 +254,7 @@ $result = $conn->query($sql);
             <?php 
             if ($_GET['success'] === 'updated') echo 'User status updated successfully!';
             if ($_GET['success'] === 'deleted') echo 'User deleted successfully!';
+            if ($_GET['success'] === 'notes_saved') echo 'Notes saved successfully!';
             ?>
         </div>
     <?php endif; ?>
@@ -266,6 +288,11 @@ $result = $conn->query($sql);
                             <form method="POST" style="display:inline;" onsubmit="return confirm('Are you sure you want to delete this user? This action cannot be undone.');">
                                 <input type="hidden" name="delete_user" value="<?php echo $row['id']; ?>">
                                 <button type="submit" class="delete-btn">Delete</button>
+                            </form>
+                            <form method="POST">
+                                <input type="hidden" name="user_id" value="<?php echo $row['id']; ?>">
+                                <textarea name="notes"><?php echo htmlspecialchars($row['notes'] ?? ''); ?></textarea>
+                                <button type="submit" name="save_notes">Save Notes</button>
                             </form>
                         </div>
                     </td>
@@ -346,4 +373,4 @@ $result = $conn->query($sql);
     }
     </script>
 </body>
-</html> 
+</html>

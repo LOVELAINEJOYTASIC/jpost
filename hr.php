@@ -204,6 +204,14 @@ if ($stats_result && $stats_result->num_rows > 0) {
         ];
     }
 }
+
+// account.php
+$notifications_sql = "SELECT j.job, j.company, ja.status, ja.created_at 
+                     FROM job_applications ja 
+                     JOIN jobs j ON ja.job_id = j.id 
+                     WHERE ja.user_id = ? 
+                     AND ja.status IN ('Accepted', 'Interview', 'On Demand')
+                     ORDER BY ja.created_at DESC";
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -842,11 +850,14 @@ if ($stats_result && $stats_result->num_rows > 0) {
             <div class="modal-body">
                 <table style="width:100%; border-collapse:collapse;">
                     <tr>
+                        <th style="text-align:left; padding:8px;">
+                            <input type="checkbox" id="select_all_resume" onclick="toggleAllResumeCheckboxes(this)">
+                        </th>
                         <th style="text-align:left; padding:8px;">Applicant</th>
                         <th style="text-align:left; padding:8px;">Resume</th>
                     </tr>
                     <?php
-                    // Fetch all applicants with resumes
+                    // Fetch all jobseekers with resumes (show full name)
                     $resume_sql = "SELECT a.name, up.resume_file FROM applicants a
                                    LEFT JOIN user_profiles up ON a.user_id = up.user_id
                                    WHERE up.resume_file IS NOT NULL AND up.resume_file != ''";
@@ -855,6 +866,9 @@ if ($stats_result && $stats_result->num_rows > 0) {
                         while ($row = $resume_result->fetch_assoc()):
                     ?>
                     <tr>
+                        <td style="padding:8px;">
+                            <input type="checkbox" class="resume_checkbox" name="selected_resumes[]" value="<?php echo htmlspecialchars($row['name']); ?>">
+                        </td>
                         <td style="padding:8px;"><?php echo htmlspecialchars($row['name']); ?></td>
                         <td style="padding:8px;">
                             <a href="<?php echo htmlspecialchars($row['resume_file']); ?>" target="_blank" style="color:#4fc3f7;text-decoration:underline;">View/Download</a>
@@ -862,7 +876,7 @@ if ($stats_result && $stats_result->num_rows > 0) {
                     </tr>
                     <?php endwhile; else: ?>
                     <tr>
-                        <td colspan="2" style="padding:8px; color:#888;">No resumes uploaded yet.</td>
+                        <td colspan="3" style="padding:8px; color:#888;">No resumes uploaded yet.</td>
                     </tr>
                     <?php endif; ?>
                 </table>
@@ -895,6 +909,13 @@ if ($stats_result && $stats_result->num_rows > 0) {
 
     function closeResumeModal() {
         document.getElementById('resumeModal').style.display = 'none';
+    }
+
+    function toggleAllResumeCheckboxes(source) {
+        var checkboxes = document.querySelectorAll('.resume_checkbox');
+        for (var i = 0; i < checkboxes.length; i++) {
+            checkboxes[i].checked = source.checked;
+        }
     }
 
     // Close modal when clicking outside

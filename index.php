@@ -398,7 +398,7 @@ if (!empty($search_query)) {
     </div>
 
     <div class="hero">
-        <h1>Find Your Dream Job</h1>
+        <h1>Connecting talent with opportunities!</h1>
         <div class="cta-buttons">
             <a href="signup.php" class="cta-button primary-button">Get Started</a>
             <a href="explore.php" class="cta-button secondary-button">Browse Jobs</a>

@@ -231,7 +231,7 @@ $applicants_result = $applicants_stmt->get_result();
     <title>Employer Dashboard - JPOST</title>
     <style>
         body {
-            background: #181a1b;
+            background: linear-gradient(135deg, #181818 60%, #232a34 100%);
             color: #fff;
             font-family: 'Segoe UI', Arial, sans-serif;
             margin: 0;

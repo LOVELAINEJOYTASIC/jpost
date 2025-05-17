@@ -150,7 +150,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <title>Sign Up</title>
     <style>
         body {
-            background: #181818;
+            background: linear-gradient(135deg, #181818 60%, #232a34 100%);
             color: #fff;
             font-family: 'Segoe UI', Arial, sans-serif;
             margin: 0;
@@ -302,7 +302,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <input type="text" id="address" name="address" required value="<?php echo isset($_POST['address']) ? htmlspecialchars($_POST['address']) : ''; ?>">
         <label for="contact">Contact/Email Address</label>
         <input type="text" id="contact" name="contact" required value="<?php echo isset($_POST['contact']) ? htmlspecialchars($_POST['contact']) : ''; ?>">
-        <label for="application">Application Letter (skills/position)</label>
+        <label for="application">Skills</label>
         <textarea id="application" name="application" required style="width:100%;padding:10px 12px;border-radius:16px;border:none;margin-bottom:8px;font-size:1em;background:#fff;color:#222;resize:vertical;min-height:100px;"><?php echo isset($_POST['application']) ? htmlspecialchars($_POST['application']) : ''; ?></textarea>
         <div class="login-link">Already have an account? <a href="login.php">Login</a></div>
         <button type="submit">Submit</button>

@@ -4,6 +4,29 @@ if (!isset($_SESSION['user_id']) || strtolower($_SESSION['user_type']) !== 'admi
     header('Location: login.php');
     exit();
 }
+
+// Database connection
+$servername = "localhost";
+$username = "root";
+$password = "";
+$dbname = "jpost";
+
+$conn = new mysqli($servername, $username, $password, $dbname);
+
+// Check connection
+if ($conn->connect_error) {
+    die("Connection failed: " . $conn->connect_error);
+}
+
+// Remove or comment out the schema change code below:
+// $sql = "ALTER TABLE users ADD COLUMN notes TEXT NULL";
+// if ($conn->query($sql) === TRUE) {
+//     echo "Column 'notes' added successfully.";
+// } else {
+//     echo "Error updating table: " . $conn->error;
+// }
+
+$conn->close();
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -13,7 +36,7 @@ if (!isset($_SESSION['user_id']) || strtolower($_SESSION['user_type']) !== 'admi
     <title>Admin Dashboard - JPOST</title>
     <style>
         body {
-            background: #181818;
+            background: linear-gradient(135deg, #181818 60%, #232a34 100%);
             color: #fff;
             font-family: 'Segoe UI', Arial, sans-serif;
             margin: 0;
@@ -129,6 +152,15 @@ if (!isset($_SESSION['user_id']) || strtolower($_SESSION['user_type']) !== 'admi
             color: #181818;
             transform: translateY(-3px) scale(1.04);
         }
+        .note-highlight {
+            background: #fffbe7;
+            color: #b26a00;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-weight: 500;
+            display: inline-block;
+            margin: 0;
+        }
         .footer {
             width: 100%;
             background: #181818;
@@ -216,11 +248,5 @@ if (!isset($_SESSION['user_id']) || strtolower($_SESSION['user_type']) !== 'admi
             </div>
         </div>
     </div>
-    <div class="footer">
-        <a href="#">Security & Privacy</a>
-        <a href="#">Terms and Condition</a>
-        <a href="#">About</a>
-        <a href="#">Report</a>
-    </div>
 </body>
-</html> 
+</html>

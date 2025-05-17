@@ -72,10 +72,11 @@ if (isset($_POST['edit_candidate'])) {
 }
 
 // Fetch all job applications with user info
-$sql = "SELECT u.username, u.id as user_id, ja.id as application_id, ja.status, ja.notes, j.job, j.company, ja.created_at
+$sql = "SELECT u.username, u.id as user_id, ja.id as application_id, ja.status, ja.notes, j.job, j.company, ja.created_at, up.resume_file
         FROM job_applications ja
         INNER JOIN users u ON ja.user_id = u.id
         INNER JOIN jobs j ON ja.job_id = j.id
+        LEFT JOIN user_profiles up ON u.id = up.user_id
         ORDER BY ja.created_at DESC";
 
 $result = $conn->query($sql);
@@ -294,6 +295,7 @@ $result = $conn->query($sql);
             <th>Company</th>
             <th>Status</th>
             <th>Applied At</th>
+            <th>Resume</th> <!-- Add this -->
             <th>Actions</th>
         </tr>
         <?php if ($result && $result->num_rows > 0): ?>
@@ -307,6 +309,13 @@ $result = $conn->query($sql);
                     </td>
                     <td><?php echo htmlspecialchars($row['created_at']); ?></td>
                     <td>
+                        <?php if (!empty($row['resume_file'])): ?>
+                            <a href="<?php echo htmlspecialchars($row['resume_file']); ?>" target="_blank" style="color:#4fc3f7;text-decoration:underline;">View Resume</a>
+                        <?php else: ?>
+                            <span style="color:#aaa;">No Resume</span>
+                        <?php endif; ?>
+                    </td>
+                    <td>
                         <div class="action-buttons">
                             <button class="edit-btn" onclick="openEditModal(<?php echo $row['application_id']; ?>, '<?php echo htmlspecialchars($row['status']); ?>', '<?php echo htmlspecialchars($row['notes'] ?? ''); ?>')">Edit</button>
                             <form method="POST" style="display:inline;" onsubmit="return confirm('Are you sure you want to delete this application?');">
@@ -318,7 +327,7 @@ $result = $conn->query($sql);
                 </tr>
             <?php endwhile; ?>
         <?php else: ?>
-            <tr><td colspan="6">No applications found.</td></tr>
+            <tr><td colspan="7">No applications found.</td></tr>
         <?php endif; ?>
     </table>
     <br>
@@ -375,4 +384,4 @@ $result = $conn->query($sql);
     }
     </script>
 </body>
-</html> 
+</html>
