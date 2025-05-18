@@ -289,11 +289,6 @@ $result = $conn->query($sql);
                                 <input type="hidden" name="delete_user" value="<?php echo $row['id']; ?>">
                                 <button type="submit" class="delete-btn">Delete</button>
                             </form>
-                            <form method="POST">
-                                <input type="hidden" name="user_id" value="<?php echo $row['id']; ?>">
-                                <textarea name="notes"><?php echo htmlspecialchars($row['notes'] ?? ''); ?></textarea>
-                                <button type="submit" name="save_notes">Save Notes</button>
-                            </form>
                         </div>
                     </td>
                 </tr>

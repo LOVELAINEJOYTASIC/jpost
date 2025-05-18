@@ -9,54 +9,17 @@ if (!isset($_SESSION['user_id']) || strtolower($_SESSION['user_type']) !== 'admi
     exit();
 }
 
-// Auto-create workflow_stages table if it doesn't exist
+// Auto-create workflow_stages table if it doesn't exist (with job_id)
 $conn->query("CREATE TABLE IF NOT EXISTS workflow_stages (
     id INT AUTO_INCREMENT PRIMARY KEY,
+    job_id INT NOT NULL DEFAULT 0,
     stage_name VARCHAR(255) NOT NULL,
     stage_description TEXT,
     stage_order INT NOT NULL
 )");
 
-// Handle form submissions
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    if (isset($_POST['add_stage'])) {
-        $stage_name = trim($_POST['stage_name']);
-        $stage_description = trim($_POST['stage_description']);
-        $stage_order = (int)$_POST['stage_order'];
-        $sql = "INSERT INTO workflow_stages (stage_name, stage_description, stage_order) VALUES (?, ?, ?)";
-        $stmt = $conn->prepare($sql);
-        $stmt->bind_param("ssi", $stage_name, $stage_description, $stage_order);
-        $stmt->execute();
-    }
-    if (isset($_POST['edit_stage'])) {
-        $stage_id = (int)$_POST['stage_id'];
-        $stage_name = trim($_POST['stage_name']);
-        $stage_description = trim($_POST['stage_description']);
-        $stage_order = (int)$_POST['stage_order'];
-        $sql = "UPDATE workflow_stages SET stage_name = ?, stage_description = ?, stage_order = ? WHERE id = ?";
-        $stmt = $conn->prepare($sql);
-        $stmt->bind_param("ssii", $stage_name, $stage_description, $stage_order, $stage_id);
-        $stmt->execute();
-    }
-    if (isset($_POST['delete_stage'])) {
-        $stage_id = (int)$_POST['stage_id'];
-        $sql = "DELETE FROM workflow_stages WHERE id = ?";
-        $stmt = $conn->prepare($sql);
-        $stmt->bind_param("i", $stage_id);
-        $stmt->execute();
-    }
-    if (isset($_POST['reorder_stages'])) {
-        $orders = json_decode($_POST['orders'], true);
-        foreach ($orders as $order) {
-            $sql = "UPDATE workflow_stages SET stage_order = ? WHERE id = ?";
-            $stmt = $conn->prepare($sql);
-            $stmt->bind_param("ii", $order['order'], $order['id']);
-            $stmt->execute();
-        }
-    }
-    header('Location: workflow_management.php');
-    exit();
-}
+// Example: Assign all existing stages to job_id 1
+$conn->query("UPDATE workflow_stages SET job_id = 1 WHERE job_id = 0;");
 
 // Fetch all jobs for dropdown
 $jobs_result = $conn->query("SELECT id, job, company FROM jobs ORDER BY created_at DESC");
@@ -65,13 +28,88 @@ $jobs = $jobs_result ? $jobs_result->fetch_all(MYSQLI_ASSOC) : [];
 // Get selected job
 $selected_job_id = isset($_GET['job_id']) ? (int)$_GET['job_id'] : 0;
 
-// Fetch workflow stages for the selected job (or all if none selected)
-if ($selected_job_id) {
-    // For now, show global stages (future: allow per-job workflows)
-    $sql = "SELECT * FROM workflow_stages ORDER BY stage_order ASC";
-} else {
-$sql = "SELECT * FROM workflow_stages ORDER BY stage_order ASC";
+// Handle form submissions
+$message = '';
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $job_id = isset($_POST['job_id']) ? (int)$_POST['job_id'] : $selected_job_id;
+    if (isset($_POST['add_stage'])) {
+        $stage_name = trim($_POST['stage_name']);
+        $stage_description = trim($_POST['stage_description']);
+        $stage_order = (int)$_POST['stage_order'];
+        $sql = "INSERT INTO workflow_stages (job_id, stage_name, stage_description, stage_order) VALUES (?, ?, ?, ?)";
+        $stmt = $conn->prepare($sql);
+        $stmt->bind_param("issi", $job_id, $stage_name, $stage_description, $stage_order);
+        $stmt->execute();
+        $message = "Stage added!";
+    }
+    if (isset($_POST['edit_stage'])) {
+        $stage_id = (int)$_POST['stage_id'];
+        $stage_name = trim($_POST['stage_name']);
+        $stage_description = trim($_POST['stage_description']);
+        $stage_order = (int)$_POST['stage_order'];
+        $sql = "UPDATE workflow_stages SET stage_name = ?, stage_description = ?, stage_order = ? WHERE id = ? AND job_id = ?";
+        $stmt = $conn->prepare($sql);
+        $stmt->bind_param("ssiii", $stage_name, $stage_description, $stage_order, $stage_id, $job_id);
+        $stmt->execute();
+        $message = "Stage updated!";
+    }
+    if (isset($_POST['delete_stage'])) {
+        $stage_id = (int)$_POST['stage_id'];
+        $sql = "DELETE FROM workflow_stages WHERE id = ? AND job_id = ?";
+        $stmt = $conn->prepare($sql);
+        $stmt->bind_param("ii", $stage_id, $job_id);
+        $stmt->execute();
+        $message = "Stage deleted!";
+    }
+    if (isset($_POST['move_stage'])) {
+        $stage_id = (int)$_POST['stage_id'];
+        $direction = $_POST['direction']; // 'up' or 'down'
+        // Get current stage
+        $sql = "SELECT id, stage_order FROM workflow_stages WHERE id = ? AND job_id = ?";
+        $stmt = $conn->prepare($sql);
+        $stmt->bind_param("ii", $stage_id, $job_id);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $current = $result->fetch_assoc();
+        if ($current) {
+            $current_order = $current['stage_order'];
+            // Find the stage to swap with
+            $swap_sql = "SELECT id, stage_order FROM workflow_stages WHERE job_id = ? AND stage_order " . ($direction === 'up' ? "<" : ">") . " ? ORDER BY stage_order " . ($direction === 'up' ? "DESC" : "ASC") . " LIMIT 1";
+            $swap_stmt = $conn->prepare($swap_sql);
+            $swap_stmt->bind_param("ii", $job_id, $current_order);
+            $swap_stmt->execute();
+            $swap_result = $swap_stmt->get_result();
+            $swap = $swap_result->fetch_assoc();
+            if ($swap) {
+                // Swap the orders
+                $conn->query("UPDATE workflow_stages SET stage_order = {$swap['stage_order']} WHERE id = {$current['id']}");
+                $conn->query("UPDATE workflow_stages SET stage_order = {$current['stage_order']} WHERE id = {$swap['id']}");
+                $message = "Stage order updated!";
+            }
+        }
+    }
+    // Copy global stages to this job
+    if (isset($_POST['copy_global_stages'])) {
+        $max_order = 0;
+        $result = $conn->query("SELECT MAX(stage_order) as max_order FROM workflow_stages WHERE job_id = $job_id");
+        if ($row = $result->fetch_assoc()) {
+            $max_order = (int)$row['max_order'];
+        }
+        $global_stages = $conn->query("SELECT stage_name, stage_description, stage_order FROM workflow_stages WHERE job_id = 0 ORDER BY stage_order ASC");
+        while ($gs = $global_stages->fetch_assoc()) {
+            $stmt = $conn->prepare("INSERT INTO workflow_stages (job_id, stage_name, stage_description, stage_order) VALUES (?, ?, ?, ?)");
+            $order = ++$max_order;
+            $stmt->bind_param("issi", $job_id, $gs['stage_name'], $gs['stage_description'], $order);
+            $stmt->execute();
+        }
+        $message = "Global stages copied!";
+    }
+    header('Location: workflow_management.php?job_id=' . $job_id . '&msg=' . urlencode($message));
+    exit();
 }
+
+// Fetch workflow stages for the selected job, or global if job_id=0
+$sql = "SELECT * FROM workflow_stages WHERE job_id = $selected_job_id ORDER BY stage_order ASC";
 $result = $conn->query($sql);
 $stages = $result ? $result->fetch_all(MYSQLI_ASSOC) : [];
 
@@ -86,6 +124,7 @@ if ($selected_job_id) {
         $applicants_per_stage[$stage_name] = $row['count'];
     }
 }
+$msg = isset($_GET['msg']) ? htmlspecialchars($_GET['msg']) : '';
 ?>
 
 <!DOCTYPE html>
@@ -289,6 +328,11 @@ if ($selected_job_id) {
     <div class="container">
         <a href="admin.php" style="display:inline-block; margin-bottom:24px; background:#4fc3f7; color:#181818; padding:10px 28px; border-radius:8px; text-decoration:none; font-weight:600; font-size:1.1em; box-shadow:0 2px 8px rgba(0,0,0,0.10); transition:background 0.2s, color 0.2s;">&larr; Back to Admin Dashboard</a>
     <h1>Workflow Management</h1>
+        <?php if ($msg): ?>
+            <div class="msg" style="background:#232a34; color:#4fc3f7; border-left:4px solid #4fc3f7; padding:12px 20px; border-radius:8px; margin-bottom:18px; font-weight:600;">
+                <?php echo $msg; ?>
+            </div>
+        <?php endif; ?>
         <form method="GET" style="margin-bottom:24px; text-align:center;">
             <label for="job_id" style="color:#4fc3f7; font-weight:600; margin-right:8px;">Select Job:</label>
             <select name="job_id" id="job_id" onchange="this.form.submit()" style="padding:8px 16px; border-radius:6px; font-size:1em;">
@@ -311,9 +355,16 @@ if ($selected_job_id) {
                 </div>
             </div>
         <?php endif; ?>
+        <?php if ($selected_job_id && empty($stages)): ?>
+            <form method="POST" style="margin-bottom:24px;">
+                <input type="hidden" name="job_id" value="<?php echo $selected_job_id; ?>">
+                <button type="submit" name="copy_global_stages" class="btn">Copy Global Stages to This Job</button>
+            </form>
+        <?php endif; ?>
         <div class="form-section">
             <h2 style="color:#4fc3f7;">Add New Stage</h2>
             <form method="POST" style="margin-top:18px;">
+                <input type="hidden" name="job_id" value="<?php echo $selected_job_id; ?>">
                 <div class="form-group">
                     <label for="stage_name">Stage Name</label>
                     <input type="text" id="stage_name" name="stage_name" required>
@@ -323,7 +374,7 @@ if ($selected_job_id) {
                     <textarea id="stage_description" name="stage_description" rows="2"></textarea>
                 </div>
                 <div class="form-group">
-                    <label for="stage_order">Order</label>
+                    <label for="stage_order">name</label>
                     <input type="number" id="stage_order" name="stage_order" min="1" value="<?php echo count($stages) + 1; ?>" required>
                 </div>
                 <button type="submit" name="add_stage" class="btn">Add Stage</button>
@@ -345,11 +396,41 @@ if ($selected_job_id) {
                         <td><?php echo htmlspecialchars($stage['stage_name']); ?></td>
                         <td><?php echo htmlspecialchars($stage['stage_description']); ?></td>
                         <td class="actions">
+                            <!-- Move Up/Down -->
                             <form method="POST" style="display:inline;">
+                                <input type="hidden" name="job_id" value="<?php echo $selected_job_id; ?>">
                                 <input type="hidden" name="stage_id" value="<?php echo $stage['id']; ?>">
-                                <button type="submit" name="delete_stage" class="btn delete-btn" onclick="return confirm('Delete this stage?');">Delete</button>
+                                <input type="hidden" name="direction" value="up">
+                                <button type="submit" name="move_stage" class="btn updown-btn" title="Move Up">
+                                    <i class="fas fa-arrow-up"></i>
+                                </button>
                             </form>
-                            <button class="btn edit-btn" onclick="openEditModal(<?php echo $stage['id']; ?>, '<?php echo htmlspecialchars(addslashes($stage['stage_name'])); ?>', '<?php echo htmlspecialchars(addslashes($stage['stage_description'])); ?>', <?php echo $stage['stage_order']; ?>)">Edit</button>
+                            <form method="POST" style="display:inline;">
+                                <input type="hidden" name="job_id" value="<?php echo $selected_job_id; ?>">
+                                <input type="hidden" name="stage_id" value="<?php echo $stage['id']; ?>">
+                                <input type="hidden" name="direction" value="down">
+                                <button type="submit" name="move_stage" class="btn updown-btn" title="Move Down">
+                                    <i class="fas fa-arrow-down"></i>
+                                </button>
+                            </form>
+                            <!-- Edit -->
+                            <button class="btn edit-btn" title="Edit"
+                                onclick="openEditModal(
+                                    <?php echo $stage['id']; ?>,
+                                    '<?php echo htmlspecialchars(addslashes($stage['stage_name'])); ?>',
+                                    '<?php echo htmlspecialchars(addslashes($stage['stage_description'])); ?>',
+                                    <?php echo $stage['stage_order']; ?>
+                                )">
+                                <i class="fas fa-edit"></i>
+                            </button>
+                            <!-- Delete -->
+                            <form method="POST" style="display:inline;" onsubmit="return confirm('Delete this stage?');">
+                                <input type="hidden" name="job_id" value="<?php echo $selected_job_id; ?>">
+                                <input type="hidden" name="stage_id" value="<?php echo $stage['id']; ?>">
+                                <button type="submit" name="delete_stage" class="btn delete-btn" title="Delete">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </form>
                         </td>
                     </tr>
                 <?php endforeach; ?>
@@ -361,6 +442,7 @@ if ($selected_job_id) {
                 <span style="position:absolute; top:12px; right:18px; font-size:1.5em; color:#888; cursor:pointer;" onclick="closeEditModal()">&times;</span>
                 <h2 style="color:#4fc3f7; margin-top:0;">Edit Stage</h2>
                 <form method="POST" id="editForm">
+                    <input type="hidden" name="job_id" value="<?php echo $selected_job_id; ?>">
                     <input type="hidden" name="stage_id" id="edit_stage_id">
                     <div class="form-group">
                         <label for="edit_stage_name">Stage Name</label>
@@ -371,7 +453,7 @@ if ($selected_job_id) {
                         <textarea id="edit_stage_description" name="stage_description" rows="2"></textarea>
                     </div>
                     <div class="form-group">
-                        <label for="edit_stage_order">Order</label>
+                        <label for="edit_stage_order">name</label>
                         <input type="number" id="edit_stage_order" name="stage_order" min="1" required>
                     </div>
                     <button type="submit" name="edit_stage" class="btn">Save Changes</button>
@@ -405,4 +487,4 @@ if ($selected_job_id) {
         }
     </script>
 </body>
-</html> 
+</html>

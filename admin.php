@@ -248,5 +248,11 @@ $conn->close();
             </div>
         </div>
     </div>
+    <div class="footer">
+        <a href="#">Security & Privacy</a>
+        <a href="#">Terms and Condition</a>
+        <a href="#">About</a>
+        <a href="#">Report</a>
+    </div>
 </body>
 </html>
